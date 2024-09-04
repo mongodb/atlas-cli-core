@@ -17,12 +17,14 @@ package config
 import (
 	"errors"
 	"fmt"
+	"net/http"
 	"path/filepath"
 	"sort"
 	"strings"
 	"time"
 
 	"github.com/golang-jwt/jwt/v4"
+	"github.com/mongodb-forks/digest"
 	"github.com/pelletier/go-toml"
 	"github.com/spf13/afero"
 	"github.com/spf13/viper"
@@ -520,4 +522,56 @@ func (p *Profile) Save() error {
 	}
 
 	return viper.WriteConfigAs(p.Filename())
+}
+
+func HttpClient() *http.Client {
+	return Default().HttpClient()
+}
+func (p *Profile) HttpClient() *http.Client {
+	return &http.Client{
+		Transport: p.HttpTransport(http.DefaultTransport),
+	}
+}
+
+func HttpBaseURL() string {
+	return Default().HttpBaseURL()
+}
+func (p *Profile) HttpBaseURL() string {
+	return p.OpsManagerURL()
+}
+
+func HttpTransport(httpTransport http.RoundTripper) http.RoundTripper {
+	return Default().HttpTransport(httpTransport)
+}
+func (p *Profile) HttpTransport(httpTransport http.RoundTripper) http.RoundTripper {
+	username := p.PublicAPIKey()
+	password := p.PrivateAPIKey()
+
+	if username != "" && password != "" {
+		return &digest.Transport{
+			Username:  username,
+			Password:  password,
+			Transport: httpTransport,
+		}
+	}
+
+	accessToken := p.AccessToken()
+	if accessToken != "" {
+		return &Transport{
+			token: accessToken,
+			base:  httpTransport,
+		}
+	}
+
+	return httpTransport
+}
+
+type Transport struct {
+	token string
+	base  http.RoundTripper
+}
+
+func (tr *Transport) RoundTrip(req *http.Request) (*http.Response, error) {
+	req.Header.Set("Authorization", "Bearer "+tr.token)
+	return tr.base.RoundTrip(req)
 }

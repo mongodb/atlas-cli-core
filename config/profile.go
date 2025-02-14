@@ -32,11 +32,12 @@ import (
 )
 
 var (
-	defaultProfile = newProfile()
+	defaultProfile        = newProfile()
+	ErrProfileNameHasDots = errors.New("profile should not contain '.'")
 )
 
-var (
-	ErrProfileNameHasDots = errors.New("profile should not contain '.'")
+const (
+	profileFlag = "profile"
 )
 
 type Profile struct {
@@ -54,7 +55,7 @@ var errUnsupportedService = errors.New("unsupported service")
 
 func InitProfile(profile string) error {
 	if profile != "" {
-		return SetName(profile)
+		return SetName(profileFlag)
 	} else if profile = GetString(profile); profile != "" {
 		return SetName(profile)
 	} else if availableProfiles := List(); len(availableProfiles) == 1 {

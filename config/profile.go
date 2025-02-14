@@ -55,8 +55,8 @@ var errUnsupportedService = errors.New("unsupported service")
 
 func InitProfile(profile string) error {
 	if profile != "" {
-		return SetName(profileFlag)
-	} else if profile = GetString(profile); profile != "" {
+		return SetName(profile)
+	} else if profile = GetString(profileFlag); profile != "" {
 		return SetName(profile)
 	} else if availableProfiles := List(); len(availableProfiles) == 1 {
 		return SetName(availableProfiles[0])

@@ -4,7 +4,6 @@ go 1.22.5
 
 require (
 	github.com/golang-jwt/jwt/v4 v4.5.1
-	github.com/golang/mock v1.6.0
 	github.com/mongodb-forks/digest v1.1.0
 	github.com/pelletier/go-toml v1.9.5
 	github.com/spf13/afero v1.11.0

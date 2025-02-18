@@ -31,6 +31,8 @@ import (
 	"go.mongodb.org/atlas/auth"
 )
 
+//go:generate mockgen -destination=../mocks/mock_profile.go -package=mocks github.com/mongodb/atlas-cli-core/config SetSaver
+
 var (
 	defaultProfile        = newProfile()
 	ErrProfileNameHasDots = errors.New("profile should not contain '.'")

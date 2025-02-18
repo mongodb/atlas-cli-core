@@ -8,6 +8,12 @@ unit-test: ## Run unit-tests
 	@echo "==> Running unit tests..."
 	$(TEST_CMD) --tags="$(UNIT_TAGS)" -race -cover -count=1 -coverprofile $(COVERAGE) ./...
 
+.PHONY: gen-mocks
+gen-mocks: ## Generate mocks
+	@echo "==> Generating mocks"
+	# rm -rf ./mocks
+	go generate ...
+
 .PHONY: help
 .DEFAULT_GOAL := help
 help:

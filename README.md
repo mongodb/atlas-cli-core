@@ -7,7 +7,6 @@ Atlas CLI Core is a Go library that provides the foundational configuration and 
 Atlas CLI Core is a shared library that plugin developers can use to integrate with the Atlas CLI's configuration system. It provides:
 
 - **Shared Configuration Management**: Access to Atlas CLI's profile and configuration system
-- **Authentication Handling**: Support for API keys, OAuth tokens, and digest authentication
 - **Profile Operations**: Multi-profile support with configuration file
 - **Service Integration**: Built-in support for Atlas Cloud and Cloud Gov services
 

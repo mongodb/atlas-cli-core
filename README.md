@@ -26,13 +26,9 @@ When a plugin command is invoked, the Atlas CLI:
 
 ## Features
 
-- **Profile Management**: Multi-profile support with secure credential storage
-- **Authentication**: Support for API keys, OAuth tokens, and digest authentication
+- **Profile Management**: Multi-profile support with configuration file
 - **Configuration**: Flexible configuration management with environment variable support
 - **Service Support**: Built-in support for Atlas Cloud and Cloud Gov services
-- **Security**: Secure credential storage with proper file permissions
-- **Telemetry**: Configurable telemetry support
-- **Cross-platform**: Works on Windows, macOS, and Linux
 
 ## Installation
 

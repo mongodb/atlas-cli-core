@@ -28,6 +28,14 @@ deps:  ## Download go module dependencies
 	go mod download
 	go mod tidy
 
+.PHONY: lint
+lint: ## Run linter
+	golangci-lint run
+	
+.PHONY: fix-lint
+fix-lint: ## Fix linting errors
+	golangci-lint run --fix
+
 .PHONY: help
 .DEFAULT_GOAL := help
 help:

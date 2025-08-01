@@ -545,25 +545,34 @@ func (p *Profile) Save() error {
 	return viper.WriteConfigAs(p.Filename())
 }
 
+//nolint:revive // HttpClient naming is kept for backwards compatibility
 func HttpClient() *http.Client {
 	return Default().HttpClient()
 }
+
+//nolint:revive // HttpClient naming is kept for backwards compatibility
 func (p *Profile) HttpClient() *http.Client {
 	return &http.Client{
 		Transport: p.HttpTransport(http.DefaultTransport),
 	}
 }
 
+//nolint:revive // HttpBaseURL naming is kept for backwards compatibility
 func HttpBaseURL() string {
 	return Default().HttpBaseURL()
 }
+
+//nolint:revive // HttpBaseURL naming is kept for backwards compatibility
 func (p *Profile) HttpBaseURL() string {
 	return p.OpsManagerURL()
 }
 
+//nolint:revive // HttpTransport naming is kept for backwards compatibility
 func HttpTransport(httpTransport http.RoundTripper) http.RoundTripper {
 	return Default().HttpTransport(httpTransport)
 }
+
+//nolint:revive // HttpTransport naming is kept for backwards compatibility
 func (p *Profile) HttpTransport(httpTransport http.RoundTripper) http.RoundTripper {
 	username := p.PublicAPIKey()
 	password := p.PrivateAPIKey()

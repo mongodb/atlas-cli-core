@@ -83,6 +83,7 @@ type Saver interface {
 	Save() error
 }
 
+//nolint:iface // SetSaver interface is used for mock generation
 type SetSaver interface {
 	Setter
 	Saver

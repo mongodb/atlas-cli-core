@@ -1,14 +1,14 @@
 module github.com/mongodb/atlas-cli-core
 
-go 1.22.5
+go 1.23.6
 
 require (
 	github.com/golang-jwt/jwt/v4 v4.5.1
-	github.com/golang/mock v1.6.0
 	github.com/mongodb-forks/digest v1.1.0
 	github.com/pelletier/go-toml v1.9.5
 	github.com/spf13/afero v1.11.0
 	github.com/stretchr/testify v1.9.0
+	go.uber.org/mock v0.5.2
 )
 
 require (

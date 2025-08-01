@@ -11,8 +11,8 @@ unit-test: ## Run unit-tests
 .PHONY: gen-mocks
 gen-mocks: ## Generate mocks
 	@echo "==> Generating mocks"
-	# rm -rf ./mocks
-	go generate ...
+	rm -rf ./mocks
+	go generate ./...
 
 .PHONY: help
 .DEFAULT_GOAL := help

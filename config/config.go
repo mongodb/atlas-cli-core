@@ -27,7 +27,7 @@ import (
 	"github.com/spf13/viper"
 )
 
-//go:generate mockgen -destination=../mocks/mock_profile.go -package=mocks github.com/mongodb/atlas-cli-core/config SetSaver
+//go:generate go run go.uber.org/mock/mockgen -destination=../mocks/mock_profile.go -package=mocks github.com/mongodb/atlas-cli-core/config SetSaver
 
 const (
 	MongoCLIEnvPrefix        = "MCLI"          // MongoCLIEnvPrefix prefix for MongoCLI ENV variables
@@ -67,8 +67,8 @@ const (
 )
 
 var (
-	HostName       = getConfigHostnameFromEnvs()
-	CLIUserType    = newCLIUserTypeFromEnvs()
+	HostName    = getConfigHostnameFromEnvs()
+	CLIUserType = newCLIUserTypeFromEnvs()
 )
 
 type Setter interface {

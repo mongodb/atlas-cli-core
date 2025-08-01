@@ -14,6 +14,12 @@ gen-mocks: ## Generate mocks
 	rm -rf ./mocks
 	go generate ./...
 
+.PHONY: deps
+deps:  ## Download go module dependencies
+	@echo "==> Installing go.mod dependencies..."
+	go mod download
+	go mod tidy
+
 .PHONY: help
 .DEFAULT_GOAL := help
 help:

@@ -33,7 +33,7 @@ When a plugin command is invoked, the Atlas CLI:
 
 ### Prerequisites
 
-- Go 1.22.5 or later
+- Go 1.24.2
 - Git
 
 ### As a Dependency

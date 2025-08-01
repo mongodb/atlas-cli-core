@@ -27,7 +27,7 @@ import (
 	"github.com/spf13/viper"
 )
 
-//go:generate go run go.uber.org/mock/mockgen -destination=../mocks/mock_profile.go -package=mocks github.com/mongodb/atlas-cli-core/config SetSaver
+//go:generate go run go.uber.org/mock/mockgen@v0.5.2 -destination=../mocks/mock_profile.go -package=mocks github.com/mongodb/atlas-cli-core/config SetSaver
 
 const (
 	MongoCLIEnvPrefix        = "MCLI"          // MongoCLIEnvPrefix prefix for MongoCLI ENV variables

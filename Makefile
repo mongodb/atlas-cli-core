@@ -2,6 +2,14 @@ TEST_CMD?=go test
 UNIT_TAGS?=unit
 COVERAGE=coverage.out
 
+ifeq ($(OS),Windows_NT)
+	export PATH := .\bin;$(shell go env GOPATH)\bin;$(PATH)
+else
+	export PATH := ./bin:$(shell go env GOPATH)/bin:$(PATH)
+endif
+export TERM := linux-m
+export GO111MODULE := on
+export GOTOOLCHAIN := local
 
 .PHONY: unit-test
 unit-test: ## Run unit-tests

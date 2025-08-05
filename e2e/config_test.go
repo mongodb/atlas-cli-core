@@ -17,14 +17,12 @@
 package e2e
 
 import (
-	"os"
 	"testing"
 
+	"github.com/mongodb/atlas-cli-core/config"
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-
-	"github.com/mongodb/atlas-cli-core/config"
 )
 
 // TestAtlasCLICoreLibrary tests the most essential library functionality that plugin developers use.

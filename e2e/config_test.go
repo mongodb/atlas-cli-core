@@ -17,6 +17,7 @@
 package e2e
 
 import (
+	"os"
 	"testing"
 
 	"github.com/spf13/viper"

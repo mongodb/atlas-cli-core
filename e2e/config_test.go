@@ -1,4 +1,4 @@
-// Copyright 2020 MongoDB Inc
+// Copyright 2025 MongoDB Inc
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -17,7 +17,6 @@
 package e2e
 
 import (
-	"os"
 	"testing"
 
 	"github.com/spf13/viper"
@@ -30,10 +29,7 @@ import (
 // TestAtlasCLICoreLibrary tests the most essential library functionality that plugin developers use.
 // This focuses on the core workflow without trying to test every edge case.
 func TestAtlasCLICoreLibrary(t *testing.T) {
-	// Create isolated test environment
-	tempDir, err := os.MkdirTemp("", "atlas-cli-core-e2e-*")
-	require.NoError(t, err)
-	defer os.RemoveAll(tempDir)
+	tempDir := t.TempDir()
 
 	// Set environment variable to override config directory
 	// This must be done before any config operations
@@ -46,7 +42,7 @@ func TestAtlasCLICoreLibrary(t *testing.T) {
 	profileName := "test-plugin-profile"
 
 	// Initialize profile (what plugin developers do first)
-	err = config.InitProfile(profileName)
+	err := config.InitProfile(profileName)
 	require.NoError(t, err)
 	assert.Equal(t, profileName, config.Name())
 

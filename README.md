@@ -262,11 +262,15 @@ go test -race -cover -count=1 -coverprofile coverage.out ./...
 # Run unit tests
 make unit-test
 
+# Run end-to-end tests
+make e2e-test
+
 # Run specific test file
 go test ./config -v
 
 # Run tests with tags
 go test --tags="unit" ./...
+go test --tags="e2e" ./...
 ```
 
 ### Code Generation

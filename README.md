@@ -273,6 +273,16 @@ go test --tags="unit" ./...
 go test --tags="e2e" ./...
 ```
 
+#### End-to-End Testing
+
+The e2e tests validate the complete plugin developer workflow with real filesystem operations:
+
+- **Profile Initialization**: Testing `config.InitProfile()` 
+- **Configuration Management**: Setting and getting project IDs, organization IDs, and service types
+- **Profile Operations**: Profile listing, existence checks, and multiple profile support
+
+These tests ensure the library works correctly in real-world plugin scenarios without mocks.
+
 ### Code Generation
 
 ```bash

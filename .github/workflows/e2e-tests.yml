@@ -1,0 +1,50 @@
+---
+name: E2E Tests
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+permissions:
+  pull-requests: write  # For PR-specific operations
+  issues: write        # For commenting functionality
+jobs:
+  e2e-tests:
+    name: e2e-tests
+    env:
+      TEST_CMD: gotestsum --junitfile e2e-tests.xml --format standard-verbose --
+      E2E_TAGS: e2e
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: GitHubSecurityLab/actions-permissions/monitor@v1
+        if: ${{ matrix.os=='ubuntu-latest' }}
+        with:
+          config: ${{ vars.PERMISSIONS_CONFIG }}
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Install Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: 'go.mod'
+      - run: go install gotest.tools/gotestsum@latest
+      - name: Run E2E Tests
+        run: make e2e-test
+      - name: Test Summary
+        id: test_summary
+        uses: test-summary/action@31493c76ec9e7aa675f1585d3ed6f1da69269a86
+        with:
+          paths: e2e-tests.xml
+        if: always() && matrix.os == 'ubuntu-latest'
+      - name: Upload test results
+        if: always() && matrix.os == 'ubuntu-latest'
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-test-results
+          path: e2e-tests.xml
+          retention-days: 7

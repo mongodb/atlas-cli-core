@@ -296,6 +296,12 @@ func (p *Profile) SetOpsManagerURL(v string) {
 	p.Set(OpsManagerURLField, v)
 }
 
+// AccountURL gets the configured account base url.
+func AccountURL() string { return Default().AccountURL() }
+func (p *Profile) AccountURL() string {
+	return p.GetString(AccountURLField)
+}
+
 // ProjectID get configured project ID.
 func ProjectID() string { return Default().ProjectID() }
 func (p *Profile) ProjectID() string {

@@ -46,6 +46,7 @@ const (
 	RefreshTokenField        = "refresh_token"
 	ClientIDField            = "client_id"
 	OpsManagerURLField       = "ops_manager_url"
+	AccountURLField          = "account_url"
 	baseURL                  = "base_url"
 	output                   = "output"
 	fileFlags                = os.O_CREATE | os.O_TRUNC | os.O_WRONLY

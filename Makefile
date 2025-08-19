@@ -20,7 +20,7 @@ unit-test: ## Run unit-tests
 .PHONY: e2e-test
 e2e-test: ## Run end-to-end tests
 	@echo "==> Running e2e tests..."
-	$(TEST_CMD) --tags="$(E2E_TAGS)" -race -count=1 ./e2e/...
+	$(TEST_CMD) --tags="$(E2E_TAGS)" -race -count=1 ./test/e2e/...
 
 .PHONY: gen-mocks
 gen-mocks: ## Generate mocks

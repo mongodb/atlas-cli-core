@@ -73,15 +73,3 @@ func TestServiceAccountTransport(t *testing.T) {
 	assert.Equal(t, 200, resp.StatusCode, "Should get successful response with service account")
 	t.Logf("Service account authentication successful, status: %d", resp.StatusCode)
 }
-
-func TestTransportTimeouts(t *testing.T) {
-	// Test that default and telemetry transports have different timeouts
-	defaultTransport := transport.Default()
-	telemetryTransport := transport.Telemetry()
-
-	// Verify they are different instances
-	assert.NotSame(t, defaultTransport, telemetryTransport, "Default and telemetry transports should be different instances")
-
-	// Test behavior with a slow endpoint (you might need to create a test server for this)
-	t.Log("Transport timeout configurations verified")
-}

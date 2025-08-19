@@ -1,6 +1,5 @@
 TEST_CMD?=go test
-UNIT_TAGS?=unit
-E2E_TAGS?=e2e
+E2E_TEST_PACKAGES?=./test/e2e/...
 COVERAGE=coverage.out
 
 ifeq ($(OS),Windows_NT)
@@ -12,15 +11,21 @@ export TERM := linux-m
 export GO111MODULE := on
 export GOTOOLCHAIN := local
 
+export MONGODB_ATLAS_ORG_ID?=a0123456789abcdef012345a
+export MONGODB_ATLAS_PROJECT_ID?=b0123456789abcdef012345b
+export MONGODB_ATLAS_PUBLIC_API_KEY?=ABCDEF01
+export MONGODB_ATLAS_PRIVATE_API_KEY?=12345678-abcd-ef01-2345-6789abcdef01
+export MONGODB_ATLAS_OPS_MANAGER_URL?=http://localhost:8080/
+
 .PHONY: unit-test
 unit-test: ## Run unit-tests
 	@echo "==> Running unit tests..."
-	$(TEST_CMD) --tags="$(UNIT_TAGS)" -race -cover -count=1 -coverprofile $(COVERAGE) ./...
+	$(TEST_CMD) -short -cover -count=1 -coverprofile $(COVERAGE) ./...
 
 .PHONY: e2e-test
 e2e-test: ## Run end-to-end tests
 	@echo "==> Running e2e tests..."
-	$(TEST_CMD) --tags="$(E2E_TAGS)" -race -count=1 ./test/e2e/...
+	$(TEST_CMD) -v -p 1 ${E2E_TEST_PACKAGES} -race -count=1 ./test/e2e/...
 
 .PHONY: gen-mocks
 gen-mocks: ## Generate mocks

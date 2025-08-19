@@ -16,6 +16,7 @@ package internal
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -141,11 +142,15 @@ func (tc *TestCredentials) deleteServiceAccount() {
 		return
 	}
 
+	// Create a context with timeout for the delete request as test context is cancelled
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
 	digestTransport := transport.NewDigestTransport(tc.PublicKey, tc.PrivateKey, transport.Default())
 	client := &http.Client{Transport: digestTransport}
 
 	url := fmt.Sprintf("%sapi/atlas/v2/orgs/%s/serviceAccounts/%s", tc.BaseURL, tc.OrgID, tc.ClientID)
-	req, err := http.NewRequestWithContext(tc.t.Context(), http.MethodDelete, url, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, url, nil)
 	if err != nil {
 		tc.t.Logf("Failed to create delete request: %v", err)
 		return

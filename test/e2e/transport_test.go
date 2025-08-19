@@ -12,8 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//go:build e2e
-
 package e2e
 
 import (
@@ -29,6 +27,10 @@ import (
 
 // TestDigestTransport tests the digest authentication transport through an actual Atlas API call.
 func TestDigestTransport(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping test in short mode")
+	}
+
 	tc := internal.NewTestCredentials(t)
 
 	digestTransport := transport.NewDigestTransport(tc.PublicKey, tc.PrivateKey, transport.Default())
@@ -49,6 +51,10 @@ func TestDigestTransport(t *testing.T) {
 
 // TestServiceAccountTransport tests the service account transport through an actual Atlas API call.
 func TestServiceAccountTransport(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping test in short mode")
+	}
+
 	tc := internal.NewTestCredentials(t)
 	tc.CreateServiceAccount()
 

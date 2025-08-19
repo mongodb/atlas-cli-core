@@ -32,6 +32,7 @@ const (
 	defaultBaseURL          = "https://cloud-dev.mongodb.com/"
 	AcceptHeader            = "application/vnd.atlas.2025-03-12+json"
 	secretExpiresAfterHours = 8
+	contextTimeout          = 30 * time.Second
 )
 
 // TestCredentials holds the test credentials and manages lifecycle
@@ -143,7 +144,7 @@ func (tc *TestCredentials) deleteServiceAccount() {
 	}
 
 	// Create a context with timeout for the delete request as test context is cancelled
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), contextTimeout)
 	defer cancel()
 
 	digestTransport := transport.NewDigestTransport(tc.PublicKey, tc.PrivateKey, transport.Default())

@@ -13,7 +13,11 @@ jobs:
     name: e2e-tests
     env:
       TEST_CMD: gotestsum --junitfile e2e-tests.xml --format standard-verbose --
-      E2E_TAGS: e2e
+      E2E_TEST_PACKAGES: ./test/e2e/...
+      MONGODB_ATLAS_ORG_ID: ${{ secrets.MONGODB_ATLAS_ORG_ID }}
+      MONGODB_ATLAS_PUBLIC_API_KEY: ${{ secrets.MONGODB_ATLAS_PUBLIC_API_KEY }}
+      MONGODB_ATLAS_PRIVATE_API_KEY: ${{ secrets.MONGODB_ATLAS_PRIVATE_API_KEY }}
+      MONGODB_ATLAS_OPS_MANAGER_URL: ${{ secrets.MONGODB_ATLAS_OPS_MANAGER_URL }}
     strategy:
       fail-fast: false
       matrix:

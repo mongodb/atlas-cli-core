@@ -16,7 +16,6 @@ package internal
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -102,7 +101,7 @@ func (tc *TestCredentials) CreateServiceAccount() {
 
 	// Create the service account
 	url := fmt.Sprintf("%sapi/atlas/v2/orgs/%s/serviceAccounts", tc.BaseURL, tc.OrgID)
-	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, url, bytes.NewReader(payloadBytes))
+	req, err := http.NewRequestWithContext(tc.t.Context(), http.MethodPost, url, bytes.NewReader(payloadBytes))
 	require.NoError(tc.t, err)
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", AcceptHeader)
@@ -146,7 +145,7 @@ func (tc *TestCredentials) deleteServiceAccount() {
 	client := &http.Client{Transport: digestTransport}
 
 	url := fmt.Sprintf("%sapi/atlas/v2/orgs/%s/serviceAccounts/%s", tc.BaseURL, tc.OrgID, tc.ClientID)
-	req, err := http.NewRequestWithContext(context.Background(), http.MethodDelete, url, nil)
+	req, err := http.NewRequestWithContext(tc.t.Context(), http.MethodDelete, url, nil)
 	if err != nil {
 		tc.t.Logf("Failed to create delete request: %v", err)
 		return

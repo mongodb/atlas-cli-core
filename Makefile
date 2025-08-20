@@ -1,6 +1,5 @@
 TEST_CMD?=go test
-UNIT_TAGS?=unit
-E2E_TAGS?=e2e
+E2E_TEST_PACKAGES?=./test/e2e/...
 COVERAGE=coverage.out
 
 ifeq ($(OS),Windows_NT)
@@ -15,12 +14,12 @@ export GOTOOLCHAIN := local
 .PHONY: unit-test
 unit-test: ## Run unit-tests
 	@echo "==> Running unit tests..."
-	$(TEST_CMD) --tags="$(UNIT_TAGS)" -race -cover -count=1 -coverprofile $(COVERAGE) ./...
+	$(TEST_CMD) -short -cover -count=1 -coverprofile $(COVERAGE) ./...
 
 .PHONY: e2e-test
 e2e-test: ## Run end-to-end tests
 	@echo "==> Running e2e tests..."
-	$(TEST_CMD) --tags="$(E2E_TAGS)" -race -count=1 ./e2e/...
+	$(TEST_CMD) -v -p 1 ${E2E_TEST_PACKAGES} -race -count=1 ./test/e2e/...
 
 .PHONY: gen-mocks
 gen-mocks: ## Generate mocks

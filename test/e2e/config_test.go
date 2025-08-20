@@ -12,8 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//go:build e2e
-
 package e2e
 
 import (
@@ -28,6 +26,10 @@ import (
 // TestAtlasCLICoreLibrary tests the most essential library functionality that plugin developers use.
 // This focuses on the core workflow without trying to test every edge case.
 func TestAtlasCLICoreLibrary(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping test in short mode")
+	}
+
 	tempDir := t.TempDir()
 
 	// Set environment variable to override config directory

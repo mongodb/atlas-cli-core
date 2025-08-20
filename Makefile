@@ -11,12 +11,6 @@ export TERM := linux-m
 export GO111MODULE := on
 export GOTOOLCHAIN := local
 
-export MONGODB_ATLAS_ORG_ID?=a0123456789abcdef012345a
-export MONGODB_ATLAS_PROJECT_ID?=b0123456789abcdef012345b
-export MONGODB_ATLAS_PUBLIC_API_KEY?=ABCDEF01
-export MONGODB_ATLAS_PRIVATE_API_KEY?=12345678-abcd-ef01-2345-6789abcdef01
-export MONGODB_ATLAS_OPS_MANAGER_URL?=http://localhost:8080/
-
 .PHONY: unit-test
 unit-test: ## Run unit-tests
 	@echo "==> Running unit tests..."

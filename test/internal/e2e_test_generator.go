@@ -54,7 +54,7 @@ func NewTestCredentials(t *testing.T) *TestCredentials {
 	orgID := os.Getenv("MONGODB_ATLAS_ORG_ID")
 
 	if publicKey == "" || privateKey == "" || orgID == "" {
-		t.Skip("MONGODB_ATLAS_PUBLIC_API_KEY, MONGODB_ATLAS_PRIVATE_API_KEY, and MONGODB_ATLAS_ORG_ID must be set for e2e tests")
+		t.Skip("E2E tests require MONGODB_ATLAS_PUBLIC_API_KEY, MONGODB_ATLAS_PRIVATE_API_KEY, and MONGODB_ATLAS_ORG_ID")
 	}
 
 	baseURL := defaultBaseURL
@@ -114,6 +114,12 @@ func (tc *TestCredentials) CreateServiceAccount() {
 
 	require.Less(tc.t, resp.StatusCode, http.StatusBadRequest, "Failed to create service account, status: %d", resp.StatusCode)
 
+	// Setup cleanup
+	tc.t.Cleanup(func() {
+		tc.t.Logf("Cleaning up service account: %s", tc.ClientID)
+		tc.deleteServiceAccount()
+	})
+
 	// Extract service account credentials
 	var serviceAccount serviceAccountResponse
 	err = json.NewDecoder(resp.Body).Decode(&serviceAccount)
@@ -127,12 +133,6 @@ func (tc *TestCredentials) CreateServiceAccount() {
 	require.NotEmpty(tc.t, tc.ClientSecret, "clientSecret should not be empty")
 
 	tc.t.Logf("Created service account: clientID=%s", tc.ClientID)
-
-	// Setup cleanup
-	tc.t.Cleanup(func() {
-		tc.t.Logf("Cleaning up service account: %s", tc.ClientID)
-		tc.deleteServiceAccount()
-	})
 }
 
 // deleteServiceAccount deletes the service account created for testing.

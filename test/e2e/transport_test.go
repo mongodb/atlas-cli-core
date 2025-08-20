@@ -62,7 +62,7 @@ func TestServiceAccountTransport(t *testing.T) {
 	config.SetOpsManagerURL(tc.BaseURL)
 	defer config.SetOpsManagerURL(tmp)
 	// Test the service account client from transport package
-	client := transport.NewServiceAccountClient(tc.ClientID, tc.ClientSecret)
+	client := transport.NewServiceAccountClientWithHost(tc.ClientID, tc.ClientSecret, tc.BaseURL)
 	require.NotNil(t, client)
 
 	// Test actual API call using the service account

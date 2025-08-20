@@ -114,18 +114,6 @@ func (tr *tokenTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 }
 
 // NewServiceAccountClient creates a new HTTP client configured for service account authentication.
-// This function does not return http.RoundTripper as atlas-sdk already packages a transport with the client.
-func NewServiceAccountClient(clientID, clientSecret string) *http.Client {
-	cfg := clientcredentials.NewConfig(clientID, clientSecret)
-	if config.OpsManagerURL() != "" {
-		baseURL := strings.TrimSuffix(config.OpsManagerURL(), "/")
-		cfg.TokenURL = baseURL + clientcredentials.TokenAPIPath
-		cfg.RevokeURL = baseURL + clientcredentials.RevokeAPIPath
-	}
-	return cfg.Client(context.Background())
-}
-
-// NewServiceAccountClientWithHost creates a new HTTP client configured for service account authentication with a custom host.
 // Adding this temporarily until we move config.OpsManagerURL() to this package.
 func NewServiceAccountClientWithHost(clientID, clientSecret, host string) *http.Client {
 	cfg := clientcredentials.NewConfig(clientID, clientSecret)

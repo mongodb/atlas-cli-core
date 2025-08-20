@@ -65,7 +65,7 @@ func TestNewServiceAccountTransport(t *testing.T) {
 	clientID := "mock-client-id"
 	clientSecret := "mock-client-secret" //nolint:gosec
 
-	client := NewServiceAccountClient(clientID, clientSecret)
+	client := NewServiceAccountClientWithHost(clientID, clientSecret, tokenServer.URL)
 	require.NotNil(t, client)
 
 	// Create request to check authentication header

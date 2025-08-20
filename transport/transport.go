@@ -124,3 +124,15 @@ func NewServiceAccountClient(clientID, clientSecret string) *http.Client {
 	}
 	return cfg.Client(context.Background())
 }
+
+// NewServiceAccountClientWithHost creates a new HTTP client configured for service account authentication with a custom host.
+// Adding this temporarily until we move config.OpsManagerURL() to this package.
+func NewServiceAccountClientWithHost(clientID, clientSecret, host string) *http.Client {
+	cfg := clientcredentials.NewConfig(clientID, clientSecret)
+	if host != "" {
+		baseURL := strings.TrimSuffix(host, "/")
+		cfg.TokenURL = baseURL + clientcredentials.TokenAPIPath
+		cfg.RevokeURL = baseURL + clientcredentials.RevokeAPIPath
+	}
+	return cfg.Client(context.Background())
+}

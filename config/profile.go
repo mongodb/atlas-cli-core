@@ -15,77 +15,228 @@
 package config
 
 import (
+	"context"
 	"errors"
 	"fmt"
-	"net/http"
-	"path/filepath"
+	"os"
+	"slices"
 	"sort"
 	"strings"
 	"time"
 
-	"github.com/golang-jwt/jwt/v4"
-	"github.com/mongodb-forks/digest"
-	"github.com/pelletier/go-toml"
-	"github.com/spf13/afero"
-	"github.com/spf13/viper"
+	"github.com/golang-jwt/jwt/v5"
 	"go.mongodb.org/atlas/auth"
 )
 
-//go:generate go run go.uber.org/mock/mockgen@v0.5.2 -destination=../mocks/mock_profile.go -package=mocks github.com/mongodb/atlas-cli-core/config SetSaver
-
-var (
-	defaultProfile        = newProfile()
-	ErrProfileNameHasDots = errors.New("profile should not contain '.'")
+const (
+	ProfileFlag              = "profile"
+	MongoCLIEnvPrefix        = "MCLI"          // MongoCLIEnvPrefix prefix for MongoCLI ENV variables
+	AtlasCLIEnvPrefix        = "MONGODB_ATLAS" // AtlasCLIEnvPrefix prefix for AtlasCLI ENV variables
+	DefaultProfile           = "default"       // DefaultProfile default
+	CloudService             = "cloud"         // CloudService setting when using Atlas API
+	CloudGovService          = "cloudgov"      // CloudGovService setting when using Atlas API for Government
+	projectID                = "project_id"
+	orgID                    = "org_id"
+	mongoShellPath           = "mongosh_path"
+	configType               = "toml"
+	service                  = "service"
+	AuthTypeField            = "auth_type"
+	publicAPIKey             = "public_api_key"
+	privateAPIKey            = "private_api_key"
+	AccessTokenField         = "access_token"
+	RefreshTokenField        = "refresh_token"
+	ClientIDField            = "client_id"
+	ClientSecretField        = "client_secret"
+	OpsManagerURLField       = "ops_manager_url"
+	AccountURLField          = "account_url"
+	baseURL                  = "base_url"
+	apiVersion               = "api_version"
+	output                   = "output"
+	fileFlags                = os.O_CREATE | os.O_TRUNC | os.O_WRONLY
+	configPerm               = 0600
+	defaultPermissions       = 0700
+	skipUpdateCheck          = "skip_update_check"
+	TelemetryEnabledProperty = "telemetry_enabled"
+	AtlasCLI                 = "atlascli"
+	ContainerizedHostNameEnv = "MONGODB_ATLAS_IS_CONTAINERIZED"
+	GitHubActionsHostNameEnv = "GITHUB_ACTIONS"
+	AtlasActionHostNameEnv   = "ATLAS_GITHUB_ACTION"
+	CLIUserTypeEnv           = "CLI_USER_TYPE" // CLIUserTypeEnv is used to separate MongoDB University users from default users
+	DefaultUser              = "default"       // Users that do NOT use ATLAS CLI with MongoDB University
+	UniversityUser           = "university"    // Users that uses ATLAS CLI with MongoDB University
+	NativeHostName           = "native"
+	DockerContainerHostName  = "container"
+	GitHubActionsHostName    = "all_github_actions"
+	AtlasActionHostName      = "atlascli_github_action"
+	LocalDeploymentImage     = "local_deployment_image" // LocalDeploymentImage is the config key for the MongoDB Local Dev Docker image
+	Version                  = "version"                // versionField is the key for the configuration version
 )
 
-const (
-	profileFlag = "profile"
+// Workaround to keep existing code working
+// We cannot set the profile immediately because of a race condition which breaks all the unit tests
+//
+// The goal is to get rid of this, but we will need to do this gradually, since it's a large change that affects almost every command
+func SetProfile(profile *Profile) {
+	defaultProfile = profile
+}
+
+var (
+	defaultProfile = &Profile{
+		name:        DefaultProfile,
+		configStore: NewInMemoryStore(),
+	}
+	profileContextKey = profileKey{}
 )
 
 type Profile struct {
-	name      string
-	configDir string
-	fs        afero.Fs
-	err       error
+	name        string
+	configStore Store
 }
 
-func Default() *Profile {
-	return defaultProfile
+func NewProfile(name string, configStore Store) *Profile {
+	return &Profile{
+		name:        name,
+		configStore: configStore,
+	}
+}
+
+type profileKey struct{}
+
+// Setting a value
+func WithProfile(ctx context.Context, profile *Profile) context.Context {
+	return context.WithValue(ctx, profileContextKey, profile)
+}
+
+// Getting a value
+func ProfileFromContext(ctx context.Context) (*Profile, bool) {
+	if ctx == nil {
+		return nil, false
+	}
+
+	profile, ok := ctx.Value(profileContextKey).(*Profile)
+	return profile, ok
 }
 
 var errUnsupportedService = errors.New("unsupported service")
 
 func InitProfile(profile string) error {
 	if profile != "" {
-		return SetName(profile)
-	} else if profile = GetString(profileFlag); profile != "" {
-		return SetName(profile)
+		if err := SetName(profile); err != nil {
+			return err
+		}
+	} else if profile = GetString(ProfileFlag); profile != "" {
+		if err := SetName(profile); err != nil {
+			return err
+		}
 	} else if availableProfiles := List(); len(availableProfiles) == 1 {
-		return SetName(availableProfiles[0])
+		if err := SetName(availableProfiles[0]); err != nil {
+			return err
+		}
 	}
 
 	if !IsCloud() {
 		return fmt.Errorf("%w: %s", errUnsupportedService, Service())
 	}
 
+	initAuthType()
+
 	return nil
 }
 
-func newProfile() *Profile {
-	configDir, err := CLIConfigHome()
-	np := &Profile{
-		name:      DefaultProfile,
-		configDir: configDir,
-		fs:        afero.NewOsFs(),
-		err:       err,
+// initAuthType initializes the authentication type based on the current configuration.
+// If the user has set credentials via environment variables and has not set
+// 'MONGODB_ATLAS_AUTH_TYPE', it will set the auth type accordingly.
+func initAuthType() {
+	// If the auth type is already set, we don't need to do anything.
+	authType := AuthType()
+	if authType != "" {
+		return
 	}
-	return np
+	// If the auth type is not set, we try to determine it based on the available credentials.
+	if PrivateAPIKey() != "" && PublicAPIKey() != "" {
+		SetAuthType(APIKeys)
+	}
+	if AccessToken() != "" && RefreshToken() != "" {
+		SetAuthType(UserAccount)
+	}
+	if ClientID() != "" && ClientSecret() != "" {
+		SetAuthType(ServiceAccount)
+	}
+}
+
+func AllProperties() []string {
+	return append(ProfileProperties(), GlobalProperties()...)
+}
+
+func BooleanProperties() []string {
+	return []string{
+		skipUpdateCheck,
+		TelemetryEnabledProperty,
+	}
+}
+
+func ProfileProperties() []string {
+	return []string{
+		AccessTokenField,
+		apiVersion,
+		baseURL,
+		OpsManagerURLField,
+		orgID,
+		output,
+		privateAPIKey,
+		projectID,
+		publicAPIKey,
+		ClientIDField,
+		ClientSecretField,
+		RefreshTokenField,
+		service,
+	}
+}
+
+func GlobalProperties() []string {
+	return []string{
+		Version,
+		LocalDeploymentImage,
+		mongoShellPath,
+		skipUpdateCheck,
+		TelemetryEnabledProperty,
+	}
+}
+
+func IsTrue(s string) bool {
+	switch s {
+	case "t", "T", "true", "True", "TRUE", "y", "Y", "yes", "Yes", "YES", "1":
+		return true
+	default:
+		return false
+	}
+}
+
+func Default() *Profile {
+	return defaultProfile
+}
+
+func SetDefaultProfile(profile *Profile) {
+	defaultProfile = profile
+}
+
+// List returns the names of available profiles.
+func List() []string { return Default().List() }
+func (p *Profile) List() []string {
+	return p.configStore.GetProfileNames()
+}
+
+// Exists returns true if a profile with the give name exists.
+func Exists(name string) bool {
+	return slices.Contains(List(), name)
 }
 
 func Name() string { return Default().Name() }
 func (p *Profile) Name() string {
 	return p.name
 }
+
+var ErrProfileNameHasDots = errors.New("profile should not contain '.'")
 
 func validateName(name string) error {
 	if strings.Contains(name, ".") {
@@ -108,23 +259,17 @@ func (p *Profile) SetName(name string) error {
 
 func Set(name string, value any) { Default().Set(name, value) }
 func (p *Profile) Set(name string, value any) {
-	settings := viper.GetStringMap(p.Name())
-	settings[name] = value
-	viper.Set(p.name, settings)
+	p.configStore.SetProfileValue(p.Name(), name, value)
 }
 
-func SetGlobal(name string, value any) { viper.Set(name, value) }
-func (*Profile) SetGlobal(name string, value any) {
-	SetGlobal(name, value)
+func SetGlobal(name string, value any) { Default().SetGlobal(name, value) }
+func (p *Profile) SetGlobal(name string, value any) {
+	p.configStore.SetGlobalValue(name, value)
 }
 
 func Get(name string) any { return Default().Get(name) }
 func (p *Profile) Get(name string) any {
-	if viper.IsSet(name) && viper.Get(name) != "" {
-		return viper.Get(name)
-	}
-	settings := viper.GetStringMap(p.Name())
-	return settings[name]
+	return p.configStore.GetHierarchicalValue(p.Name(), name)
 }
 
 func GetString(name string) string { return Default().GetString(name) }
@@ -152,15 +297,25 @@ func (p *Profile) GetBoolWithDefault(name string, defaultValue bool) bool {
 	}
 }
 
+func GetInt64(name string) int64 { return Default().GetInt64(name) }
+func (p *Profile) GetInt64(name string) int64 {
+	value := p.Get(name)
+	if value == nil {
+		return 0
+	}
+	return value.(int64)
+}
+
 // Service get configured service.
 func Service() string { return Default().Service() }
 func (p *Profile) Service() string {
-	if viper.IsSet(service) {
-		return viper.GetString(service)
+	if p.configStore.IsSetGlobal(service) {
+		serviceValue, _ := p.configStore.GetGlobalValue(service).(string)
+		return serviceValue
 	}
 
-	settings := viper.GetStringMapString(p.Name())
-	return settings[service]
+	serviceValue, _ := p.configStore.GetProfileValue(p.Name(), service).(string)
+	return serviceValue
 }
 
 func IsCloud() bool {
@@ -172,6 +327,27 @@ func IsCloud() bool {
 func SetService(v string) { Default().SetService(v) }
 func (p *Profile) SetService(v string) {
 	p.Set(service, v)
+}
+
+type AuthMechanism string
+
+const (
+	APIKeys        AuthMechanism = "api_keys"
+	UserAccount    AuthMechanism = "user_account"
+	ServiceAccount AuthMechanism = "service_account"
+	NoAuth         AuthMechanism = "no_auth"
+)
+
+// AuthType gets the configured auth type.
+func AuthType() AuthMechanism { return Default().AuthType() }
+func (p *Profile) AuthType() AuthMechanism {
+	return AuthMechanism(p.GetString(AuthTypeField))
+}
+
+// SetAuthType sets the configured auth type.
+func SetAuthType(v AuthMechanism) { Default().SetAuthType(v) }
+func (p *Profile) SetAuthType(v AuthMechanism) {
+	p.Set(AuthTypeField, string(v))
 }
 
 // PublicAPIKey get configured public api key.
@@ -222,25 +398,28 @@ func (p *Profile) SetRefreshToken(v string) {
 	p.Set(RefreshTokenField, v)
 }
 
-type AuthMechanism int
+// ClientID get configured client ID.
+func ClientID() string { return Default().ClientID() }
+func (p *Profile) ClientID() string {
+	return p.GetString(ClientIDField)
+}
 
-const (
-	APIKeys AuthMechanism = iota
+// SetClientID set configured client ID.
+func SetClientID(v string) { Default().SetClientID(v) }
+func (p *Profile) SetClientID(v string) {
+	p.Set(ClientIDField, v)
+}
 
-	OAuth
-	NotLoggedIn
-)
+// ClientSecret get configured client secret.
+func ClientSecret() string { return Default().ClientSecret() }
+func (p *Profile) ClientSecret() string {
+	return p.GetString(ClientSecretField)
+}
 
-// AuthType returns the type of authentication used in the profile.
-func AuthType() AuthMechanism { return Default().AuthType() }
-func (p *Profile) AuthType() AuthMechanism {
-	if p.PublicAPIKey() != "" && p.PrivateAPIKey() != "" {
-		return APIKeys
-	}
-	if p.AccessToken() != "" {
-		return OAuth
-	}
-	return NotLoggedIn
+// SetClientSecret set configured client secret.
+func SetClientSecret(v string) { Default().SetClientSecret(v) }
+func (p *Profile) SetClientSecret(v string) {
+	p.Set(ClientSecretField, v)
 }
 
 // Token gets configured auth.Token.
@@ -282,6 +461,18 @@ func (p *Profile) tokenClaims() (jwt.RegisteredClaims, error) {
 	// ParseUnverified is ok here, only want to make sure is a JWT and to get the claims for a Subject
 	_, _, err := new(jwt.Parser).ParseUnverified(p.AccessToken(), &c)
 	return c, err
+}
+
+// APIVersion get the default API version.
+func APIVersion() string { return Default().APIVersion() }
+func (p *Profile) APIVersion() string {
+	return p.GetString(apiVersion)
+}
+
+// SetAPIVersion sets the default API version.
+func SetAPIVersion(v string) { Default().SetAPIVersion(v) }
+func (p *Profile) SetAPIVersion(v string) {
+	p.Set(apiVersion, v)
 }
 
 // OpsManagerURL get configured ops manager base url.
@@ -340,8 +531,8 @@ func (*Profile) SetSkipUpdateCheck(v bool) {
 
 // IsTelemetryEnabledSet return true if telemetry_enabled has been set.
 func IsTelemetryEnabledSet() bool { return Default().IsTelemetryEnabledSet() }
-func (*Profile) IsTelemetryEnabledSet() bool {
-	return viper.IsSet(TelemetryEnabledProperty)
+func (p *Profile) IsTelemetryEnabledSet() bool {
+	return p.configStore.IsSetGlobal(TelemetryEnabledProperty)
 }
 
 // TelemetryEnabled get the configured telemetry enabled value.
@@ -360,6 +551,16 @@ func (*Profile) SetTelemetryEnabled(v bool) {
 	SetGlobal(TelemetryEnabledProperty, v)
 }
 
+func boolEnv(key string) bool {
+	value, ok := os.LookupEnv(key)
+	return ok && IsTrue(value)
+}
+
+func isTelemetryFeatureAllowed() bool {
+	doNotTrack := boolEnv("DO_NOT_TRACK")
+	return !doNotTrack
+}
+
 // Output get configured output format.
 func Output() string { return Default().Output() }
 func (p *Profile) Output() string {
@@ -372,17 +573,11 @@ func (p *Profile) SetOutput(v string) {
 	p.Set(output, v)
 }
 
-// ClientID get configured output format.
-func ClientID() string { return Default().ClientID() }
-func (p *Profile) ClientID() string {
-	return p.GetString(ClientIDField)
-}
-
-// IsAccessSet return true if API keys have been set up.
-// For Ops Manager we also check for the base URL.
+// IsAccessSet return true if Service Account or API Keys credentials have been set up.
 func IsAccessSet() bool { return Default().IsAccessSet() }
 func (p *Profile) IsAccessSet() bool {
-	isSet := p.PublicAPIKey() != "" && p.PrivateAPIKey() != ""
+	isSet := p.PublicAPIKey() != "" && p.PrivateAPIKey() != "" ||
+		p.ClientID() != "" && p.ClientSecret() != ""
 
 	return isSet
 }
@@ -390,7 +585,7 @@ func (p *Profile) IsAccessSet() bool {
 // Map returns a map describing the configuration.
 func Map() map[string]string { return Default().Map() }
 func (p *Profile) Map() map[string]string {
-	settings := viper.GetStringMapString(p.Name())
+	settings := p.configStore.GetProfileStringMap(p.Name())
 	profileSettings := make(map[string]string, len(settings)+1)
 	for k, v := range settings {
 		if k == privateAPIKey || k == AccessTokenField || k == RefreshTokenField {
@@ -419,39 +614,7 @@ func (p *Profile) SortedKeys() []string {
 // this edits the file directly.
 func Delete() error { return Default().Delete() }
 func (p *Profile) Delete() error {
-	// Configuration needs to be deleted from toml, as viper doesn't support this yet.
-	// FIXME :: change when https://github.com/spf13/viper/pull/519 is merged.
-	settings := viper.AllSettings()
-
-	t, err := toml.TreeFromMap(settings)
-	if err != nil {
-		return err
-	}
-
-	// Delete from the toml manually
-	err = t.Delete(p.Name())
-	if err != nil {
-		return err
-	}
-
-	s := t.String()
-
-	f, err := p.fs.OpenFile(p.Filename(), fileFlags, configPerm)
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-
-	_, err = f.WriteString(s)
-	return err
-}
-
-func (p *Profile) Filename() string {
-	return filepath.Join(p.configDir, "config.toml")
-}
-
-func Filename() string {
-	return Default().Filename()
+	return p.configStore.DeleteProfile(p.Name())
 }
 
 // Rename replaces the Profile to a new Profile name, overwriting any Profile that existed before.
@@ -461,153 +624,23 @@ func (p *Profile) Rename(newProfileName string) error {
 		return err
 	}
 
-	// Configuration needs to be deleted from toml, as viper doesn't support this yet.
-	// FIXME :: change when https://github.com/spf13/viper/pull/519 is merged.
-	configurationAfterDelete := viper.AllSettings()
-
-	t, err := toml.TreeFromMap(configurationAfterDelete)
-	if err != nil {
-		return err
-	}
-
-	t.Set(newProfileName, t.Get(p.Name()))
-
-	err = t.Delete(p.Name())
-	if err != nil {
-		return err
-	}
-
-	s := t.String()
-
-	f, err := p.fs.OpenFile(p.Filename(), fileFlags, configPerm)
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-
-	if _, err := f.WriteString(s); err != nil {
-		return err
-	}
-
-	return nil
-}
-
-func LoadAtlasCLIConfig() error { return Default().LoadAtlasCLIConfig(true) }
-func (p *Profile) LoadAtlasCLIConfig(readEnvironmentVars bool) error {
-	if p.err != nil {
-		return p.err
-	}
-
-	viper.SetConfigName("config")
-
-	if hasMongoCLIEnvVars() {
-		viper.SetEnvKeyReplacer(strings.NewReplacer(AtlasCLIEnvPrefix, MongoCLIEnvPrefix))
-	}
-
-	return p.load(readEnvironmentVars, AtlasCLIEnvPrefix)
-}
-
-func (p *Profile) load(readEnvironmentVars bool, envPrefix string) error {
-	viper.SetConfigType(configType)
-	viper.SetConfigPermissions(configPerm)
-	viper.AddConfigPath(p.configDir)
-	viper.SetFs(p.fs)
-
-	if readEnvironmentVars {
-		viper.SetEnvPrefix(envPrefix)
-		viper.AutomaticEnv()
-	}
-
-	// aliases only work for a config file, this won't work for env variables
-	viper.RegisterAlias(baseURL, OpsManagerURLField)
-
-	// If a config file is found, read it in.
-	err := viper.ReadInConfig()
-	if err == nil {
-		return nil
-	}
-
-	// ignore if it doesn't exists
-	var e viper.ConfigFileNotFoundError
-	if errors.As(err, &e) {
-		return nil
-	}
-	return err
+	return p.configStore.RenameProfile(p.Name(), newProfileName)
 }
 
 // Save the configuration to disk.
 func Save() error { return Default().Save() }
 func (p *Profile) Save() error {
-	exists, err := afero.DirExists(p.fs, p.configDir)
-	if err != nil {
-		return err
-	}
-	if !exists {
-		if err := p.fs.MkdirAll(p.configDir, defaultPermissions); err != nil {
-			return err
-		}
-	}
-
-	return viper.WriteConfigAs(p.Filename())
+	return p.configStore.Save()
 }
 
-//nolint:revive // HttpClient naming is kept for backwards compatibility
-func HttpClient() *http.Client {
-	return Default().HttpClient()
+// GetLocalDeploymentImage returns the configured MongoDB Docker image URL.
+func GetLocalDeploymentImage() string { return Default().GetLocalDeploymentImage() }
+func (p *Profile) GetLocalDeploymentImage() string {
+	return p.GetString(LocalDeploymentImage)
 }
 
-//nolint:revive // HttpClient naming is kept for backwards compatibility
-func (p *Profile) HttpClient() *http.Client {
-	return &http.Client{
-		Transport: p.HttpTransport(http.DefaultTransport),
-	}
-}
-
-//nolint:revive // HttpBaseURL naming is kept for backwards compatibility
-func HttpBaseURL() string {
-	return Default().HttpBaseURL()
-}
-
-//nolint:revive // HttpBaseURL naming is kept for backwards compatibility
-func (p *Profile) HttpBaseURL() string {
-	return p.OpsManagerURL()
-}
-
-//nolint:revive // HttpTransport naming is kept for backwards compatibility
-func HttpTransport(httpTransport http.RoundTripper) http.RoundTripper {
-	return Default().HttpTransport(httpTransport)
-}
-
-//nolint:revive // HttpTransport naming is kept for backwards compatibility
-func (p *Profile) HttpTransport(httpTransport http.RoundTripper) http.RoundTripper {
-	username := p.PublicAPIKey()
-	password := p.PrivateAPIKey()
-
-	if username != "" && password != "" {
-		return &digest.Transport{
-			Username:  username,
-			Password:  password,
-			Transport: httpTransport,
-		}
-	}
-
-	accessToken := p.AccessToken()
-	if accessToken != "" {
-		return &Transport{
-			token: accessToken,
-			base:  httpTransport,
-		}
-	}
-
-	return httpTransport
-}
-
-type Transport struct {
-	token string
-	base  http.RoundTripper
-}
-
-func (tr *Transport) RoundTrip(req *http.Request) (*http.Response, error) {
-	req.Header.Set("Authorization", "Bearer "+tr.token)
-	return tr.base.RoundTrip(req)
+// SetLocalDeploymentImage sets the MongoDB Docker image URL.
+func SetLocalDeploymentImage(v string) { Default().SetLocalDeploymentImage(v) }
+func (*Profile) SetLocalDeploymentImage(v string) {
+	SetGlobal(LocalDeploymentImage, v)
 }

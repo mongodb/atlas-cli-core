@@ -12,6 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+// This file implements ViperConfigStore for persistent configuration storage
+// using Viper and TOML files, providing insecure plaintext storage.
+
 package config
 
 import (
@@ -35,6 +38,7 @@ type ViperConfigStore struct {
 }
 
 // ViperConfigStore specific methods
+// NewViperStore creates a ViperConfigStore with filesystem, config paths, and optional environment variable loading.
 func NewViperStore(fs afero.Fs, loadEnvVars bool) (*ViperConfigStore, error) {
 	configDir, err := CLIConfigHome()
 	if err != nil {
@@ -76,6 +80,7 @@ func NewViperStore(fs afero.Fs, loadEnvVars bool) (*ViperConfigStore, error) {
 	}, nil
 }
 
+// hasMongoCLIEnvVars checks for MongoCLI-prefixed environment variables for backward compatibility.
 func hasMongoCLIEnvVars() bool {
 	envVars := os.Environ()
 	for _, v := range envVars {
@@ -87,20 +92,24 @@ func hasMongoCLIEnvVars() bool {
 	return false
 }
 
+// ViperConfigStoreFilename returns the full path to the configuration file.
 func ViperConfigStoreFilename(configDir string) string {
 	return filepath.Join(configDir, "config.toml")
 }
 
+// Filename returns this store's configuration file path.
 func (s *ViperConfigStore) Filename() string {
 	return ViperConfigStoreFilename(s.configDir)
 }
 
 // ConfigStore implementation
 
+// IsSecure returns false as this store uses plaintext TOML files.
 func (*ViperConfigStore) IsSecure() bool {
 	return false
 }
 
+// Save persists configuration to disk, creating directories if needed.
 func (s *ViperConfigStore) Save() error {
 	exists, err := afero.DirExists(s.fs, s.configDir)
 	if err != nil {
@@ -115,6 +124,7 @@ func (s *ViperConfigStore) Save() error {
 	return s.viper.WriteConfigAs(s.Filename())
 }
 
+// GetProfileNames returns all profile names in the configuration file.
 func (s *ViperConfigStore) GetProfileNames() []string {
 	allKeys := s.viper.AllSettings()
 
@@ -129,6 +139,7 @@ func (s *ViperConfigStore) GetProfileNames() []string {
 	return profileNames
 }
 
+// RenameProfile copies profile configuration to new name and deletes old one.
 func (s *ViperConfigStore) RenameProfile(oldProfileName string, newProfileName string) error {
 	if err := validateName(newProfileName); err != nil {
 		return err
@@ -165,6 +176,7 @@ func (s *ViperConfigStore) RenameProfile(oldProfileName string, newProfileName s
 	return nil
 }
 
+// DeleteProfile removes profile from configuration using direct TOML manipulation.
 func (s *ViperConfigStore) DeleteProfile(profileName string) error {
 	// Configuration needs to be deleted from toml, as viper doesn't support this yet.
 	// FIXME :: change when https://github.com/spf13/viper/pull/519 is merged.
@@ -193,6 +205,7 @@ func (s *ViperConfigStore) DeleteProfile(profileName string) error {
 	return err
 }
 
+// GetHierarchicalValue checks global settings first, then profile-specific values.
 func (s *ViperConfigStore) GetHierarchicalValue(profileName string, propertyName string) any {
 	if s.viper.IsSet(propertyName) && s.viper.Get(propertyName) != "" {
 		return s.viper.Get(propertyName)
@@ -201,6 +214,7 @@ func (s *ViperConfigStore) GetHierarchicalValue(profileName string, propertyName
 	return settings[propertyName]
 }
 
+// SetProfileValue sets profile property.
 func (s *ViperConfigStore) SetProfileValue(profileName string, propertyName string, value any) {
 	// HACK: viper doesn't allow deleting values: https://github.com/spf13/viper/issues/632
 	// Viper was never intended to be used as a key-value store with a save functionality.
@@ -215,23 +229,28 @@ func (s *ViperConfigStore) SetProfileValue(profileName string, propertyName stri
 	s.viper.Set(profileName, settings)
 }
 
+// GetProfileValue retrieves property value from profile configuration.
 func (s *ViperConfigStore) GetProfileValue(profileName string, propertyName string) any {
 	settings := s.viper.GetStringMap(profileName)
 	return settings[propertyName]
 }
 
+// GetProfileStringMap returns all profile properties as string map.
 func (s *ViperConfigStore) GetProfileStringMap(profileName string) map[string]string {
 	return s.viper.GetStringMapString(profileName)
 }
 
+// SetGlobalValue sets global configuration property.
 func (s *ViperConfigStore) SetGlobalValue(propertyName string, value any) {
 	s.viper.Set(propertyName, value)
 }
 
+// GetGlobalValue retrieves global configuration property.
 func (s *ViperConfigStore) GetGlobalValue(propertyName string) any {
 	return s.viper.Get(propertyName)
 }
 
+// IsSetGlobal checks if global property is set.
 func (s *ViperConfigStore) IsSetGlobal(propertyName string) bool {
 	return s.viper.IsSet(propertyName)
 }

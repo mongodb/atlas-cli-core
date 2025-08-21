@@ -12,6 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+// This file implements KeyringStore for secure credential storage using the system
+// keyring, with in-memory caching and deferred persistence through pending operations.
+// Each credential saved on the keyring is connected to a service. Each service
+// represents a config profile.
+
 package secure
 
 import (
@@ -25,11 +30,12 @@ import (
 
 const servicePrefix = "atlascli_"
 
+// createServiceName generates a keyring service name with profile-specific prefix.
 func createServiceName(profileName string) string {
 	return servicePrefix + profileName
 }
 
-// KeyringClient abstracts keyring operations for easier testing
+// KeyringClient abstracts keyring operations for easier testing.
 type KeyringClient interface {
 	Set(service, user, password string) error
 	Get(service, user string) (string, error)
@@ -37,17 +43,20 @@ type KeyringClient interface {
 	DeleteAll(service string) error
 }
 
-// DefaultKeyringClient implements KeyringClient using the zalando/go-keyring library
+// DefaultKeyringClient implements KeyringClient using the zalando/go-keyring library.
 type DefaultKeyringClient struct{}
 
+// NewDefaultKeyringClient creates a new DefaultKeyringClient instance.
 func NewDefaultKeyringClient() *DefaultKeyringClient {
 	return &DefaultKeyringClient{}
 }
 
+// Set stores a credential in the keyring.
 func (*DefaultKeyringClient) Set(service, user, password string) error {
 	return keyring.Set(service, user, password)
 }
 
+// Get retrieves a credential from the keyring, returning empty string if not found.
 func (*DefaultKeyringClient) Get(service, user string) (string, error) {
 	value, err := keyring.Get(service, user)
 	if err != nil && !errors.Is(err, keyring.ErrNotFound) {
@@ -57,15 +66,17 @@ func (*DefaultKeyringClient) Get(service, user string) (string, error) {
 	return value, nil
 }
 
+// Delete removes a credential from the keyring.
 func (*DefaultKeyringClient) Delete(service, user string) error {
 	return keyring.Delete(service, user)
 }
 
+// DeleteAll removes all credentials for a service from the keyring.
 func (*DefaultKeyringClient) DeleteAll(service string) error {
 	return keyring.DeleteAll(service)
 }
 
-// Operation types for tracking changes
+// Operation types for tracking changes.
 type operationType int
 
 const (
@@ -74,7 +85,7 @@ const (
 	opDeleteProfile
 )
 
-// pendingOperation represents a change that needs to be persisted
+// pendingOperation represents a change that needs to be persisted.
 type pendingOperation struct {
 	opType       operationType
 	profileName  string
@@ -82,6 +93,10 @@ type pendingOperation struct {
 	value        string
 }
 
+// KeyringStore provides secure storage using the system keyring with in-memory
+// caching. Set and delete operations are cached for a later time to keep in
+// alignment with viper behaviour which is to store all properties in memory
+// until they are explicitly saved.
 type KeyringStore struct {
 	// Available indicates if the keyring is available.
 	available bool
@@ -95,10 +110,12 @@ type KeyringStore struct {
 	keyringClient KeyringClient
 }
 
+// NewSecureStore creates a KeyringStore with default keyring client.
 func NewSecureStore(profileNames []string, secureProperties []string) *KeyringStore {
 	return NewSecureStoreWithClient(profileNames, secureProperties, NewDefaultKeyringClient())
 }
 
+// NewSecureStoreWithClient creates a KeyringStore with custom keyring client.
 func NewSecureStoreWithClient(profileNames []string, secureProperties []string, keyringClient KeyringClient) *KeyringStore {
 	store := &KeyringStore{
 		cache:            make(map[string]map[string]string),
@@ -108,7 +125,7 @@ func NewSecureStoreWithClient(profileNames []string, secureProperties []string, 
 	}
 
 	// Check if the keyring is available.
-	// We do this my marking the store as available if we can get a value from the keyring.
+	// We do this by marking the store as available if we can get a value from the keyring.
 	available := false
 	attemptedToRead := false
 
@@ -144,10 +161,12 @@ outer:
 	return store
 }
 
+// Available returns whether secure storage is available.
 func (k *KeyringStore) Available() bool {
 	return k.available
 }
 
+// Save executes all pending operations to the keyring.
 func (k *KeyringStore) Save() error {
 	// Process all pending operations
 	for _, op := range k.pendingOps {
@@ -172,6 +191,7 @@ func (k *KeyringStore) Save() error {
 	return nil
 }
 
+// Set stores a value in cache and queues it to later be saved.
 func (k *KeyringStore) Set(profileName string, propertyName string, value string) {
 	// Ignore properties that are not in SecureProperties
 	if !slices.Contains(k.secureProperties, propertyName) {
@@ -195,6 +215,7 @@ func (k *KeyringStore) Set(profileName string, propertyName string, value string
 	})
 }
 
+// Get retrieves a value from the in-memory cache.
 func (k *KeyringStore) Get(profileName string, propertyName string) string {
 	// Check if profile exists in cache
 	if profileCache, exists := k.cache[profileName]; exists {
@@ -205,6 +226,7 @@ func (k *KeyringStore) Get(profileName string, propertyName string) string {
 	return ""
 }
 
+// DeleteKey removes a property from cache and queues keyring deletion.
 func (k *KeyringStore) DeleteKey(profileName string, propertyName string) {
 	// Remove from in-memory cache if it exists
 	if profileCache, exists := k.cache[profileName]; exists {
@@ -219,6 +241,7 @@ func (k *KeyringStore) DeleteKey(profileName string, propertyName string) {
 	})
 }
 
+// DeleteProfile removes a profile from cache and queues keyring deletion.
 func (k *KeyringStore) DeleteProfile(profileName string) {
 	// Remove from in-memory cache
 	delete(k.cache, profileName)

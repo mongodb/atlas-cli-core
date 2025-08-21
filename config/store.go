@@ -73,11 +73,11 @@ func (*InMemoryStore) Save() error {
 }
 
 func (s *InMemoryStore) GetProfileNames() []string {
-	allKeys := s.v.AllKeys()
+	allKeys := s.v.AllSettings()
 
 	profileNames := make([]string, 0, len(allKeys))
-	for _, key := range allKeys {
-		if !slices.Contains(GlobalProperties(), key) {
+	for key := range allKeys {
+		if !slices.Contains(AllProperties(), key) {
 			profileNames = append(profileNames, key)
 		}
 	}

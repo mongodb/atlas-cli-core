@@ -21,6 +21,9 @@ import (
 	"path"
 )
 
+// MaxSupportedVersion is the maximum supported config version available in AtlasCLI.
+const MaxSupportedVersion = 2
+
 // CLIConfigHome retrieves configHome path.
 func CLIConfigHome() (string, error) {
 	home, err := os.UserConfigDir()
@@ -44,11 +47,23 @@ func Path(f string) (string, error) {
 	return p.String(), nil
 }
 
+// LoadAtlasCLIConfig loads configuration using the maximum supported version,
+// ensuring plugins always use the latest AtlasCLI configuration schema.
 func LoadAtlasCLIConfig() (*Profile, error) {
-	configStore, initErr := NewDefaultStore()
+	return LoadAtlasCLIConfigWithVersion(MaxSupportedVersion)
+}
 
+// LoadAtlasCLIConfigWithVersion loads configuration with validation for specified
+// version. The expectedVersion parameter enforces compatibility by rejecting
+// configs that are newer or older than expected.
+func LoadAtlasCLIConfigWithVersion(expectedVersion int64) (*Profile, error) {
+	configStore, initErr := NewDefaultStore()
 	if initErr != nil {
 		return nil, fmt.Errorf("error loading config: %w. Please run `atlas auth login` to reconfigure your profile", initErr)
+	}
+
+	if err := verifyConfigVersion(expectedVersion, configStore); err != nil {
+		return nil, fmt.Errorf("error loading config: %w", err)
 	}
 
 	if !configStore.IsSecure() {
@@ -59,4 +74,32 @@ func LoadAtlasCLIConfig() (*Profile, error) {
 	SetProfile(profile)
 
 	return profile, nil
+}
+
+// verifyConfigVersion checks if the config version is as expected. This ensures
+// an incompatible version of the config is not loaded and provides useful error
+// messaging to users.
+func verifyConfigVersion(expectedVersion int64, s Store) error {
+	rawVersion := s.GetGlobalValue("version")
+	if rawVersion == nil || rawVersion == "" {
+		// Scenario 1: User upgrades plugin but not AtlasCLI.
+		return fmt.Errorf("config version is missing, expected version %d. Please upgrade to a newer version of AtlasCLI", expectedVersion)
+	}
+
+	version, ok := rawVersion.(int64)
+	if !ok {
+		return fmt.Errorf("invalid config version type: %T", rawVersion)
+	}
+	// If version is greater than expectedVersion, the plugin is outdated.
+	if version > expectedVersion {
+		// Scenario 2: Plugin expects outdated configuration version and should be updated.
+		return fmt.Errorf("config version %d is newer than expected version %d. Please upgrade to a newer version of this plugin", version, expectedVersion)
+	}
+	// If version is less than than expectedVersion, the AtlasCLI is outdated.
+	if version < expectedVersion {
+		// Scenario 3: User upgrades plugin but not AtlasCLI, which does not support expected configuration version. AtlasCLI should be updated.
+		return fmt.Errorf("config version %d is older than expected version %d. Please upgrade to a newer version of AtlasCLI", version, expectedVersion)
+	}
+
+	return nil
 }

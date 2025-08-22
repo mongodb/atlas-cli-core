@@ -16,6 +16,12 @@
 // keyring, with in-memory caching and deferred persistence through pending operations.
 // Each credential saved on the keyring is connected to a service. Each service
 // represents a config profile.
+//
+// Example:
+// config.toml profile:
+// -> profile: "default", publicAPIKey: "pubKey", privateAPIKey: "privKey"
+// Becomes keyring:
+// -> service: atlascli_default, username: "pubKey", password: "privKey"
 
 package secure
 

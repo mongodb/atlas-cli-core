@@ -14,7 +14,8 @@
 
 // This file implements ProxyStore which routes configuration properties between
 // secure and insecure storage based on property type, providing unified access.
-// If secure storage is not available, all properties are routed to insecure storage.
+// If secure storage is not available, insecure storage is used directly without
+// ProxyStore as a wrapper.
 
 package config
 

@@ -82,6 +82,7 @@ func LoadAtlasCLIConfigWithVersion(expectedVersion int64) (*Profile, error) {
 func verifyConfigVersion(expectedVersion int64, s Store) error {
 	rawVersion := s.GetGlobalValue("version")
 	if rawVersion == nil || rawVersion == "" {
+		// Scenario 1: User upgrades plugin but not AtlasCLI.
 		return fmt.Errorf("config version is missing, expected version %d. Please upgrade to a newer version of AtlasCLI", expectedVersion)
 	}
 
@@ -91,10 +92,12 @@ func verifyConfigVersion(expectedVersion int64, s Store) error {
 	}
 	// If version is greater than expectedVersion, the plugin is outdated.
 	if version > expectedVersion {
+		// Scenario 2: Plugin expects outdated configuration version and should be updated.
 		return fmt.Errorf("config version %d is newer than expected version %d. Please upgrade to a newer version of this plugin", version, expectedVersion)
 	}
 	// If version is less than than expectedVersion, the AtlasCLI is outdated.
 	if version < expectedVersion {
+		// Scenario 3: User upgrades plugin but not AtlasCLI, which does not support expected configuration version. AtlasCLI should be updated.
 		return fmt.Errorf("config version %d is older than expected version %d. Please upgrade to a newer version of AtlasCLI", version, expectedVersion)
 	}
 

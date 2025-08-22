@@ -14,6 +14,7 @@
 
 // This file implements ProxyStore which routes configuration properties between
 // secure and insecure storage based on property type, providing unified access.
+// If secure storage is not available, all properties are routed to insecure storage.
 
 package config
 
@@ -160,7 +161,8 @@ func (p *ProxyStore) GetGlobalValue(propertyName string) any {
 	return p.insecure.GetGlobalValue(propertyName)
 }
 
-// IsSetGlobal checks only insecure store for global property existence.
+// IsSetGlobal checks only insecure store for global property existence as
+// no secure properties are global
 func (p *ProxyStore) IsSetGlobal(propertyName string) bool {
 	return p.insecure.IsSetGlobal(propertyName)
 }

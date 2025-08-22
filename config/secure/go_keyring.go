@@ -95,7 +95,7 @@ type pendingOperation struct {
 
 // KeyringStore provides secure storage using the system keyring with in-memory
 // caching. Set and delete operations are cached for a later time to keep in
-// alignment with viper behaviour which is to store all properties in memory
+// alignment with viper behavior which is to store all properties in memory
 // until they are explicitly saved.
 type KeyringStore struct {
 	// Available indicates if the keyring is available.

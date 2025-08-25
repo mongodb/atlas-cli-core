@@ -31,6 +31,8 @@ func TestVerifyConfigVersion(t *testing.T) {
 		{
 			name: "version matches expected",
 			setupMock: func(m *mocks.MockStore) {
+				m.EXPECT().GetProfileNames().Return([]string{"default"})
+				m.EXPECT().IsSetGlobal("version").Return(true)
 				m.EXPECT().GetGlobalValue("version").Return(int64(2))
 			},
 			expectedVer: 2,
@@ -39,7 +41,8 @@ func TestVerifyConfigVersion(t *testing.T) {
 		{
 			name: "missing version",
 			setupMock: func(m *mocks.MockStore) {
-				m.EXPECT().GetGlobalValue("version").Return(nil)
+				m.EXPECT().GetProfileNames().Return([]string{"default"})
+				m.EXPECT().IsSetGlobal("version").Return(false)
 			},
 			expectedVer: 2,
 			wantErr:     true,
@@ -47,6 +50,8 @@ func TestVerifyConfigVersion(t *testing.T) {
 		{
 			name: "version newer than expected",
 			setupMock: func(m *mocks.MockStore) {
+				m.EXPECT().GetProfileNames().Return([]string{"default"})
+				m.EXPECT().IsSetGlobal("version").Return(true)
 				m.EXPECT().GetGlobalValue("version").Return(int64(3))
 			},
 			expectedVer: 2,
@@ -55,10 +60,20 @@ func TestVerifyConfigVersion(t *testing.T) {
 		{
 			name: "version older than expected",
 			setupMock: func(m *mocks.MockStore) {
+				m.EXPECT().GetProfileNames().Return([]string{"default"})
+				m.EXPECT().IsSetGlobal("version").Return(true)
 				m.EXPECT().GetGlobalValue("version").Return(int64(1))
 			},
 			expectedVer: 2,
 			wantErr:     true,
+		},
+		{
+			name: "no profiles set",
+			setupMock: func(m *mocks.MockStore) {
+				m.EXPECT().GetProfileNames().Return([]string{})
+			},
+			expectedVer: 2,
+			wantErr:     false,
 		},
 	}
 

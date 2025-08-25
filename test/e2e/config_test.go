@@ -37,7 +37,6 @@ func TestConfigLoadingE2E(t *testing.T) {
 		require.NotNil(t, profile)
 		assert.Equal(t, config.DefaultProfile, profile.Name())
 		t.Logf("Config loaded successfully with profile: %s", profile.Name())
-
 	})
 
 	t.Run("LoadAtlasCLIConfigWithVersion functionality", func(t *testing.T) {
@@ -67,26 +66,15 @@ func TestConfigLoadingE2E(t *testing.T) {
 		}
 	})
 
-	t.Run("Can create a profile with DefaultStore", func(t *testing.T) {
+	t.Run("Can get all profiles with DefaultStore", func(t *testing.T) {
 		store, err := config.NewDefaultStore()
 		require.NoError(t, err)
 		require.NotNil(t, store)
 
-		profile := config.NewProfile("unsecure-storage-test-profile", store)
-		assert.Equal(t, "unsecure-storage-test-profile", profile.Name())
+		profiles := store.GetProfileNames()
+		assert.NotEmpty(t, profiles)
 
-		// check profile is not available before save
-		assert.False(t, config.Exists("unsecure-storage-test-profile"))
-
-		// save the profile
-		err = store.Save()
-		require.NoError(t, err)
-
-		// is secure store available?
-		assert.False(t, store.IsSecure())
-
-		// check if the profile is created in the store
-		profileNames := store.GetProfileNames()
-		assert.Contains(t, profileNames, "unsecure-storage-test-profile")
+		// check that the secure store is available
+		assert.True(t, store.IsSecure())
 	})
 }

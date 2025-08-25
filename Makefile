@@ -20,7 +20,7 @@ unit-test: ## Run unit-tests
 .PHONY: e2e-test
 e2e-test: ## Run end-to-end tests
 	@echo "==> Running e2e tests..."
-	$(TEST_CMD) -v -p 1 ${E2E_TEST_PACKAGES} -race -count=1 ./test/e2e/...
+	$(TEST_CMD) -v -p 1 -parallel 1 ${E2E_TEST_PACKAGES} -race -count=1 ./test/e2e/...
 
 .PHONY: gen-mocks
 gen-mocks: ## Generate mocks

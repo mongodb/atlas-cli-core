@@ -19,17 +19,27 @@ import (
 	"testing"
 
 	"github.com/mongodb/atlas-cli-core/config"
+	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 // TestConfigLoadingE2E tests the complete config loading flow in a real environment
 func TestConfigLoadingE2E(t *testing.T) {
+	tempDir := t.TempDir()
+
+	// Set environment variable to override config directory
+	// This must be done before any config operations
+	t.Setenv("XDG_CONFIG_HOME", tempDir)
+
+	// Clear and reconfigure viper for isolated test
+	viper.Reset()
+
 	if testing.Short() {
 		t.Skip("skipping test in short mode")
 	}
 
-	t.Run("LoadAtlasCLIConfig functionality", func(t *testing.T) {
+	t.Run("LoadAtlasCLIConfig", func(t *testing.T) {
 		// Test that the function is callable and returns appropriate errors or profiles
 		profile, err := config.LoadAtlasCLIConfig()
 
@@ -39,7 +49,7 @@ func TestConfigLoadingE2E(t *testing.T) {
 		t.Logf("Config loaded successfully with profile: %s", profile.Name())
 	})
 
-	t.Run("LoadAtlasCLIConfigWithVersion functionality", func(t *testing.T) {
+	t.Run("LoadAtlasCLIConfigWithVersion", func(t *testing.T) {
 		// Test different version scenarios
 		testData := []struct {
 			version int64

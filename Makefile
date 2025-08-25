@@ -1,7 +1,6 @@
 TEST_CMD?=go test
 E2E_TEST_PACKAGES?=./test/e2e/...
-COVERAGE?=coverage.out
-export GOCOVERDIR?=$(abspath cov)
+COVERAGE=coverage.out
 
 
 ifeq ($(OS),Windows_NT)
@@ -22,7 +21,6 @@ unit-test: ## Run unit-tests
 e2e-test: ## Run end-to-end tests
 	@echo "==> Running e2e tests..."
 	$(TEST_CMD) -v -p 1 ${E2E_TEST_PACKAGES} -race -count=1 ./test/e2e/...
-	go tool covdata textfmt -i $(GOCOVERDIR) -o $(COVERAGE)
 
 .PHONY: gen-mocks
 gen-mocks: ## Generate mocks

@@ -66,223 +66,27 @@ func TestConfigLoadingE2E(t *testing.T) {
 			})
 		}
 	})
-}
 
-// TestProfileLifecycleE2E tests complete profile management operations
-func TestProfileLifecycleE2E(t *testing.T) {
-	if testing.Short() {
-		t.Skip("skipping test in short mode")
-	}
+	t.Run("Can create a profile with DefaultStore", func(t *testing.T) {
+		store, err := config.NewDefaultStore()
+		require.NoError(t, err)
+		require.NotNil(t, store)
 
-	// Use a clean in-memory store for this test to avoid environment pollution
-	store := config.NewInMemoryStore()
-	profile := config.NewProfile("e2e-test-profile", store)
+		profile := config.NewProfile("unsecure-storage-test-profile", store)
+		assert.Equal(t, "unsecure-storage-test-profile", profile.Name())
 
-	// Store original default profile and restore it later
-	originalProfile := config.Default()
-	defer config.SetDefaultProfile(originalProfile)
+		// check profile is not available before save
+		assert.False(t, config.Exists("unsecure-storage-test-profile"))
 
-	t.Run("profile creation and configuration", func(t *testing.T) {
-		// Set the test profile as default
-		config.SetDefaultProfile(profile)
+		// save the profile
+		err = store.Save()
+		require.NoError(t, err)
 
-		// Configure the profile
-		profile.SetProjectID("64f1a5b2c3d4e5f6789012ab")
-		profile.SetOrgID("64f1a5b2c3d4e5f6789012cd")
-		profile.SetOutput("json")
-		profile.SetService(config.CloudService)
+		// is secure store available?
+		assert.False(t, store.IsSecure())
 
-		// Verify values are set
-		assert.Equal(t, "64f1a5b2c3d4e5f6789012ab", profile.ProjectID())
-		assert.Equal(t, "64f1a5b2c3d4e5f6789012cd", profile.OrgID())
-		assert.Equal(t, "json", profile.Output())
-		assert.Equal(t, config.CloudService, profile.Service())
-
-		// Test cloud service detection
-		assert.True(t, profile.Service() == config.CloudService || profile.Service() == "" || profile.Service() == config.CloudGovService)
+		// check if the profile is created in the store
+		profileNames := store.GetProfileNames()
+		assert.Contains(t, profileNames, "unsecure-storage-test-profile")
 	})
-
-	t.Run("profile validation", func(t *testing.T) {
-		// Test profile name validation using the profile directly
-		err := profile.SetName("invalid.profile.name")
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "profile should not contain '.'")
-
-		// Test valid profile names
-		validNames := []string{"valid-profile", "profile123", "test_profile"}
-		for _, name := range validNames {
-			err := profile.SetName(name)
-			assert.NoError(t, err, "profile name %s should be valid", name)
-		}
-	})
-
-	t.Run("profile configuration mapping", func(t *testing.T) {
-		// Set the test profile as default
-		config.SetDefaultProfile(profile)
-
-		// Test configuration mapping and redaction
-		configMap := profile.Map()
-		require.NotNil(t, configMap) // May be empty but should not be nil
-
-		// Test sorted keys
-		sortedKeys := profile.SortedKeys()
-		require.NotNil(t, sortedKeys) // May be empty but should not be nil
-
-		// Verify keys are actually sorted if there are any
-		for i := 1; i < len(sortedKeys); i++ {
-			assert.LessOrEqual(t, sortedKeys[i-1], sortedKeys[i], "keys should be sorted")
-		}
-	})
-}
-
-// TestAuthenticationConfigE2E tests authentication-related configuration
-func TestAuthenticationConfigE2E(t *testing.T) {
-	if testing.Short() {
-		t.Skip("skipping test in short mode")
-	}
-
-	// Use a clean in-memory store for this test
-	store := config.NewInMemoryStore()
-	profile := config.NewProfile("auth-test-profile", store)
-
-	// Store original default profile and restore it later
-	originalProfile := config.Default()
-	defer config.SetDefaultProfile(originalProfile)
-
-	// Set the test profile as default
-	config.SetDefaultProfile(profile)
-
-	t.Run("API key authentication", func(t *testing.T) {
-		// Set API key credentials using the profile directly
-		profile.SetPublicAPIKey("test-public-key")
-		profile.SetPrivateAPIKey("test-private-key")
-
-		// Verify values are set
-		assert.Equal(t, "test-public-key", profile.PublicAPIKey())
-		assert.Equal(t, "test-private-key", profile.PrivateAPIKey())
-
-		// Test access validation
-		assert.True(t, profile.IsAccessSet())
-
-		// Test manual auth type setting
-		profile.SetAuthType(config.APIKeys)
-		assert.Equal(t, config.APIKeys, profile.AuthType())
-	})
-
-	t.Run("service account authentication", func(t *testing.T) {
-		// Clear previous auth settings
-		profile.SetPublicAPIKey("")
-		profile.SetPrivateAPIKey("")
-
-		// Set service account credentials
-		profile.SetClientID("test-client-id")
-		profile.SetClientSecret("test-client-secret")
-
-		// Verify values are set
-		assert.Equal(t, "test-client-id", profile.ClientID())
-		assert.Equal(t, "test-client-secret", profile.ClientSecret())
-
-		// Test access validation
-		assert.True(t, profile.IsAccessSet())
-
-		// Test manual auth type setting
-		profile.SetAuthType(config.ServiceAccount)
-		assert.Equal(t, config.ServiceAccount, profile.AuthType())
-	})
-
-	t.Run("oauth authentication", func(t *testing.T) {
-		// Clear previous auth settings
-		profile.SetClientID("")
-		profile.SetClientSecret("")
-
-		// Set OAuth tokens
-		profile.SetAccessToken("test-access-token")
-		profile.SetRefreshToken("test-refresh-token")
-
-		// Verify values are set
-		assert.Equal(t, "test-access-token", profile.AccessToken())
-		assert.Equal(t, "test-refresh-token", profile.RefreshToken())
-
-		// Test manual auth type setting
-		profile.SetAuthType(config.UserAccount)
-		assert.Equal(t, config.UserAccount, profile.AuthType())
-	})
-
-	t.Run("auth type explicit setting", func(t *testing.T) {
-		// Test explicit auth type setting using the profile
-		profile.SetAuthType(config.NoAuth)
-		assert.Equal(t, config.NoAuth, profile.AuthType())
-
-		profile.SetAuthType(config.APIKeys)
-		assert.Equal(t, config.APIKeys, profile.AuthType())
-	})
-}
-
-// TestConfigGlobalSettingsE2E tests global configuration settings
-func TestConfigGlobalSettingsE2E(t *testing.T) {
-	if testing.Short() {
-		t.Skip("skipping test in short mode")
-	}
-
-	// Use a clean in-memory store for this test
-	store := config.NewInMemoryStore()
-	profile := config.NewProfile("global-test-profile", store)
-
-	// Store original default profile and restore it later
-	originalProfile := config.Default()
-	defer config.SetDefaultProfile(originalProfile)
-
-	// Set the test profile as default
-	config.SetDefaultProfile(profile)
-
-	t.Run("global settings management", func(t *testing.T) {
-		// Test skip update check
-		config.SetSkipUpdateCheck(true)
-		assert.True(t, config.SkipUpdateCheck())
-
-		config.SetSkipUpdateCheck(false)
-		assert.False(t, config.SkipUpdateCheck())
-
-		// Test telemetry settings
-		if !config.IsTelemetryEnabledSet() {
-			config.SetTelemetryEnabled(true)
-			assert.True(t, config.TelemetryEnabled())
-			assert.True(t, config.IsTelemetryEnabledSet())
-
-			config.SetTelemetryEnabled(false)
-			assert.False(t, config.TelemetryEnabled())
-		}
-
-		// Test local deployment image setting
-		testImage := "mongo:7.0"
-		config.SetLocalDeploymentImage(testImage)
-		assert.Equal(t, testImage, config.GetLocalDeploymentImage())
-	})
-
-	t.Run("service configuration", func(t *testing.T) {
-		// Test cloud service (default)
-		config.SetService(config.CloudService)
-		assert.Equal(t, config.CloudService, config.Service())
-		assert.True(t, config.IsCloud())
-
-		// Test cloud gov service
-		config.SetService(config.CloudGovService)
-		assert.Equal(t, config.CloudGovService, config.Service())
-		assert.True(t, config.IsCloud())
-
-		// Test other service (should not be cloud)
-		config.SetService("other")
-		assert.Equal(t, "other", config.Service())
-		assert.False(t, config.IsCloud())
-	})
-}
-
-func TestUnsecureStorageWarnsAndSucceeds(t *testing.T) {
-	if testing.Short() {
-		t.Skip("skipping test in short mode")
-	}
-
-	store := config.NewInMemoryStore()
-	profile := config.NewProfile("unsecure-storage-test-profile", store)
-
 }

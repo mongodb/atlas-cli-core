@@ -59,9 +59,9 @@ func TestConfig(t *testing.T) {
 		assert.Equal(t, "default", profile.Name())
 
 		// check that it has not set any profile properties yet
-		assert.Equal(t, "", profile.GetString("org_id"))
-		assert.Equal(t, "", profile.GetString("public_api_key"))
-		assert.Equal(t, "", profile.GetString("service"))
+		assert.Empty(t, profile.OrgID())
+		assert.Empty(t, profile.PublicAPIKey())
+		assert.Empty(t, profile.Service())
 	})
 
 	t.Run("LoadAtlasCLIConfigWithVersion(2) succeeds", func(t *testing.T) {
@@ -90,7 +90,7 @@ func withOldConfig(t *testing.T) {
 
 // loads a new config with version 2
 func withNewConfig(t *testing.T) {
-	// t.Helper()
+	t.Helper()
 	dir := internal.TempConfigFolder(t)
 
 	configPath := path.Join(dir, "config.toml")

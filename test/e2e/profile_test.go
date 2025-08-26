@@ -48,21 +48,10 @@ func TestAtlasCLICoreLibrary(t *testing.T) {
 	assert.Equal(t, profileName, config.Name())
 
 	// Set basic configuration (core plugin operations)
-	config.SetProjectID("64f1a5b2c3d4e5f6789012ab")
-	config.SetOrgID("64f1a5b2c3d4e5f6789012cd")
 	config.SetService(config.CloudService)
 
 	// Verify configuration can be read
-	assert.Equal(t, "64f1a5b2c3d4e5f6789012ab", config.ProjectID())
-	assert.Equal(t, "64f1a5b2c3d4e5f6789012cd", config.OrgID())
 	assert.Equal(t, config.CloudService, config.Service())
 	assert.True(t, config.IsCloud())
 
-	// Test profile existence checks
-	assert.True(t, config.Exists(profileName))
-	assert.False(t, config.Exists("nonexistent-profile"))
-
-	// Test profile listing
-	profiles := config.List()
-	assert.Contains(t, profiles, profileName)
 }

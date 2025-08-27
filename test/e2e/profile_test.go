@@ -53,5 +53,4 @@ func TestAtlasCLICoreLibrary(t *testing.T) {
 	// Verify configuration can be read
 	assert.Equal(t, config.CloudService, config.Service())
 	assert.True(t, config.IsCloud())
-
 }

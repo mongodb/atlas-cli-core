@@ -80,12 +80,18 @@ func LoadAtlasCLIConfigWithVersion(expectedVersion int64) (*Profile, error) {
 // an incompatible version of the config is not loaded and provides useful error
 // messaging to users.
 func verifyConfigVersion(expectedVersion int64, s Store) error {
-	rawVersion := s.GetGlobalValue("version")
-	if rawVersion == nil || rawVersion == "" {
+	// check if there are any profiles set, if no profile is set, there is no configuration to verify
+	profiles := s.GetProfileNames()
+	if len(profiles) == 0 {
+		return nil
+	}
+
+	if !s.IsSetGlobal("version") {
 		// Scenario 1: User upgrades plugin but not AtlasCLI.
 		return fmt.Errorf("config version is missing, expected version %d. Please upgrade to a newer version of AtlasCLI", expectedVersion)
 	}
 
+	rawVersion := s.GetGlobalValue("version")
 	version, ok := rawVersion.(int64)
 	if !ok {
 		return fmt.Errorf("invalid config version type: %T", rawVersion)

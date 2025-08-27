@@ -15,6 +15,7 @@
 package e2e
 
 import (
+	"os"
 	"testing"
 
 	"github.com/mongodb/atlas-cli-core/config"
@@ -53,6 +54,8 @@ func TestAtlasCLICoreLibrary(t *testing.T) {
 	// Verify configuration can be read
 	assert.Equal(t, config.CloudService, config.Service())
 	assert.True(t, config.IsCloud())
+	assert.Equal(t, os.Getenv("MONGODB_ATLAS_ORG_ID"), config.OrgID())
+	assert.Equal(t, os.Getenv("MONGODB_ATLAS_PROJECT_ID"), config.ProjectID())
 
 	// Test profile existence checks
 	assert.True(t, config.Exists(profileName))

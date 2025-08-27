@@ -53,4 +53,12 @@ func TestAtlasCLICoreLibrary(t *testing.T) {
 	// Verify configuration can be read
 	assert.Equal(t, config.CloudService, config.Service())
 	assert.True(t, config.IsCloud())
+
+	// Test profile existence checks
+	assert.True(t, config.Exists(profileName))
+	assert.False(t, config.Exists("nonexistent-profile"))
+
+	// Test profile listing
+	profiles := config.List()
+	assert.Contains(t, profiles, profileName)
 }

@@ -59,9 +59,14 @@ func TestConfig(t *testing.T) {
 		assert.Equal(t, "default", profile.Name())
 
 		// check that it has not set any profile properties yet
-		assert.Empty(t, profile.OrgID())
-		assert.Empty(t, profile.PublicAPIKey())
 		assert.Empty(t, profile.Service())
+
+		// init profile (this is what plugin developers do after loading the config)
+		err = config.InitProfile("config_test")
+		require.NoError(t, err)
+
+		assert.Equal(t, "cloud", profile.Service())
+		assert.Equal(t, "config_test", profile.Name())
 	})
 
 	t.Run("LoadAtlasCLIConfigWithVersion(2) succeeds", func(t *testing.T) {
@@ -99,7 +104,8 @@ func withNewConfig(t *testing.T) {
   version = 2
   [config_test]
   org_id = "new_config_org_id"
-  public_api_key = "new_config_pub"
+  client_id = "new_config_client_id"
+  client_secret = "new_config_client_secret"
   service = "cloud"
 `), 0600)
 	require.NoError(t, err)

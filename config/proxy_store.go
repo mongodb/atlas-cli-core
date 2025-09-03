@@ -114,7 +114,10 @@ func (p *ProxyStore) DeleteProfile(profileName string) error {
 // GetHierarchicalValue routes to secure or insecure store based on property type.
 func (p *ProxyStore) GetHierarchicalValue(profileName string, propertyName string) any {
 	if isSecureProperty(propertyName) {
-		return p.secure.Get(profileName, propertyName)
+		val := p.secure.Get(profileName, propertyName)
+		if val != "" {
+			return val
+		}
 	}
 	return p.insecure.GetHierarchicalValue(profileName, propertyName)
 }

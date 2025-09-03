@@ -150,6 +150,9 @@ func testGetHierarchicalValue(t *testing.T, store *ProxyStore, propertyName stri
 	expectedValue := testValue
 
 	if isSecure {
+		store.insecure.(*mocks.MockStore).EXPECT().
+			GetHierarchicalValue(profileName, propertyName).
+			Return(nil)
 		store.secure.(*mocks.MockSecureStore).EXPECT().
 			Get(profileName, propertyName).
 			Return(expectedValue)

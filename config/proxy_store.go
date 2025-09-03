@@ -112,14 +112,17 @@ func (p *ProxyStore) DeleteProfile(profileName string) error {
 }
 
 // GetHierarchicalValue routes to secure or insecure store based on property type.
+// For secure properties, it first checks the insecure store for a value, in the
+// case that environment variables are used. If no value is found, it will proceed
+// with secure store.
 func (p *ProxyStore) GetHierarchicalValue(profileName string, propertyName string) any {
-	if isSecureProperty(propertyName) {
-		val := p.secure.Get(profileName, propertyName)
-		if val != "" {
-			return val
-		}
+	val := p.insecure.GetHierarchicalValue(profileName, propertyName)
+
+	if isSecureProperty(propertyName) && val == "" {
+		return p.secure.Get(profileName, propertyName)
 	}
-	return p.insecure.GetHierarchicalValue(profileName, propertyName)
+
+	return val
 }
 
 // SetProfileValue routes to secure or insecure store based on property type.

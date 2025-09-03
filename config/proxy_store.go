@@ -118,7 +118,7 @@ func (p *ProxyStore) DeleteProfile(profileName string) error {
 func (p *ProxyStore) GetHierarchicalValue(profileName string, propertyName string) any {
 	val := p.insecure.GetHierarchicalValue(profileName, propertyName)
 
-	if isSecureProperty(propertyName) && val == "" {
+	if isSecureProperty(propertyName) && val == nil {
 		return p.secure.Get(profileName, propertyName)
 	}
 

@@ -22,7 +22,15 @@ import (
 )
 
 func HTTPClient(version string, httpTransport http.RoundTripper) (*http.Client, error) {
-	switch config.AuthType() {
+	var authType config.AuthMechanism
+	// If the auth type is not set, we try to determine it based on the available credentials.
+	if config.AuthType() == "" {
+		authType = config.RunTimeAuthType()
+	} else {
+		authType = config.AuthType()
+	}
+
+	switch authType {
 	case config.APIKeys:
 		t := NewDigestTransport(config.PublicAPIKey(), config.PrivateAPIKey(), httpTransport)
 		return t.Client()

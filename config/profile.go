@@ -138,30 +138,32 @@ func InitProfile(profile string) error {
 		return fmt.Errorf("%w: %s", errUnsupportedService, Service())
 	}
 
-	initAuthType()
-
 	return nil
 }
 
-// initAuthType initializes the authentication type based on the current configuration.
+// RunTimeAuthType fetches the authentication type based on the current configuration.
 // If the user has set credentials via environment variables and has not set
 // 'MONGODB_ATLAS_AUTH_TYPE', it will set the auth type accordingly.
-func initAuthType() {
+func RunTimeAuthType() AuthMechanism {
 	// If the auth type is already set, we don't need to do anything.
-	authType := AuthType()
-	if authType != "" {
-		return
-	}
+	profileAuthType := AuthType()
+
+	var inferredAuthType AuthMechanism
 	// If the auth type is not set, we try to determine it based on the available credentials.
 	if PrivateAPIKey() != "" && PublicAPIKey() != "" {
-		SetAuthType(APIKeys)
+		inferredAuthType = APIKeys
 	}
 	if AccessToken() != "" && RefreshToken() != "" {
-		SetAuthType(UserAccount)
+		inferredAuthType = UserAccount
 	}
 	if ClientID() != "" && ClientSecret() != "" {
-		SetAuthType(ServiceAccount)
+		inferredAuthType = ServiceAccount
 	}
+
+	if inferredAuthType != profileAuthType {
+		return inferredAuthType
+	}
+	return profileAuthType
 }
 
 func AllProperties() []string {

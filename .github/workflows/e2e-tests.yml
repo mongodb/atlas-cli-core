@@ -14,7 +14,6 @@ jobs:
     env:
       TEST_CMD: gotestsum --junitfile e2e-tests.xml --format standard-verbose --
       E2E_TEST_PACKAGES: ./test/e2e/...
-      E2E_COVERAGE: e2e-coverage.out
       MONGODB_ATLAS_ORG_ID: ${{ secrets.MONGODB_ATLAS_ORG_ID }}
       MONGODB_ATLAS_PUBLIC_API_KEY: ${{ secrets.MONGODB_ATLAS_PUBLIC_API_KEY }}
       MONGODB_ATLAS_PRIVATE_API_KEY: ${{ secrets.MONGODB_ATLAS_PRIVATE_API_KEY }}
@@ -53,29 +52,5 @@ jobs:
           name: e2e-test-results
           path: e2e-tests.xml
           retention-days: 7
-      - name: Upload coverage file
-        if: matrix.os == 'ubuntu-latest' && github.event_name == 'pull_request'
-        uses: actions/upload-artifact@v4
-        with:
-          name: e2e-coverage-file
-          path: e2e-coverage.out
-      - name: Upload coverage to Coveralls
-        if: matrix.os == 'ubuntu-latest'
-        uses: coverallsapp/github-action@v2
-        with:
-          file: e2e-coverage.out
-          format: golang
-          parallel: true
-          flag-name: E2E-${{ matrix.os }}
-          github-token: ${{ secrets.COVERALLS_TOKEN }}
-  finish-coveralls-e2e:
-    name: finish-coveralls-e2e
-    needs: e2e-tests
-    runs-on: ubuntu-latest
-    if: always()
-    steps:
-      - name: Finish Coveralls E2E
-        uses: coverallsapp/github-action@v2
-        with:
-          parallel-finished: true
-          github-token: ${{ secrets.COVERALLS_TOKEN }}
+      # E2E tests focus on integration testing rather than code coverage
+      # Coverage metrics are primarily collected from unit tests

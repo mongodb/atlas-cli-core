@@ -66,13 +66,13 @@ jobs:
           path: coverage.out
       - name: Upload coverage to Coveralls
         if: matrix.os == 'ubuntu-latest'
-        uses: shogo82148/actions-goveralls@v1
+        uses: coverallsapp/github-action@v2
         with:
-          path-to-profile: coverage.out
+          file: coverage.out
+          format: golang
           parallel: true
           flag-name: Unit-${{ matrix.os }}
-        env:
-          COVERALLS_TOKEN: ${{ secrets.COVERALLS_TOKEN }}
+          github-token: ${{ secrets.COVERALLS_TOKEN }}
   shellcheck:
     name: shellcheck
     runs-on: ubuntu-latest
@@ -162,8 +162,7 @@ jobs:
     if: always()
     steps:
       - name: Finish Coveralls
-        uses: shogo82148/actions-goveralls@v1
+        uses: coverallsapp/github-action@v2
         with:
           parallel-finished: true
-        env:
-          COVERALLS_TOKEN: ${{ secrets.COVERALLS_TOKEN }}
+          github-token: ${{ secrets.COVERALLS_TOKEN }}

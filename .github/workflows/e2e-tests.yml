@@ -61,13 +61,13 @@ jobs:
           path: e2e-coverage.out
       - name: Upload coverage to Coveralls
         if: matrix.os == 'ubuntu-latest'
-        uses: shogo82148/actions-goveralls@v1
+        uses: coverallsapp/github-action@v2
         with:
-          path-to-profile: e2e-coverage.out
+          file: e2e-coverage.out
+          format: golang
           parallel: true
           flag-name: E2E-${{ matrix.os }}
-        env:
-          COVERALLS_TOKEN: ${{ secrets.COVERALLS_TOKEN }}
+          github-token: ${{ secrets.COVERALLS_TOKEN }}
   finish-coveralls-e2e:
     name: finish-coveralls-e2e
     needs: e2e-tests
@@ -75,8 +75,7 @@ jobs:
     if: always()
     steps:
       - name: Finish Coveralls E2E
-        uses: shogo82148/actions-goveralls@v1
+        uses: coverallsapp/github-action@v2
         with:
           parallel-finished: true
-        env:
-          COVERALLS_TOKEN: ${{ secrets.COVERALLS_TOKEN }}
+          github-token: ${{ secrets.COVERALLS_TOKEN }}

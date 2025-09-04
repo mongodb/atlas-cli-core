@@ -138,30 +138,7 @@ func InitProfile(profile string) error {
 		return fmt.Errorf("%w: %s", errUnsupportedService, Service())
 	}
 
-	initAuthType()
-
 	return nil
-}
-
-// initAuthType initializes the authentication type based on the current configuration.
-// If the user has set credentials via environment variables and has not set
-// 'MONGODB_ATLAS_AUTH_TYPE', it will set the auth type accordingly.
-func initAuthType() {
-	// If the auth type is already set, we don't need to do anything.
-	authType := AuthType()
-	if authType != "" {
-		return
-	}
-	// If the auth type is not set, we try to determine it based on the available credentials.
-	if PrivateAPIKey() != "" && PublicAPIKey() != "" {
-		SetAuthType(APIKeys)
-	}
-	if AccessToken() != "" && RefreshToken() != "" {
-		SetAuthType(UserAccount)
-	}
-	if ClientID() != "" && ClientSecret() != "" {
-		SetAuthType(ServiceAccount)
-	}
 }
 
 func AllProperties() []string {
@@ -338,10 +315,25 @@ const (
 	NoAuth         AuthMechanism = "no_auth"
 )
 
-// AuthType gets the configured auth type.
+// AuthType determines the auth type, prioritizing credentials set via
+// environment variables.
+// It first retrieves the auth type configured in the profile. If programmatic
+// credentials that do not match the profile's auth type are detected, AuthType
+// infers that these credentials were set via environment variables and returns
+// the corresponding auth type.
+// This assumes users will not explicitly export the auth type variable.
 func AuthType() AuthMechanism { return Default().AuthType() }
 func (p *Profile) AuthType() AuthMechanism {
-	return AuthMechanism(p.GetString(AuthTypeField))
+	profileAuthType := AuthMechanism(p.GetString(AuthTypeField))
+
+	if profileAuthType != ServiceAccount && ClientID() != "" && ClientSecret() != "" {
+		return ServiceAccount
+	}
+	if profileAuthType != APIKeys && PrivateAPIKey() != "" && PublicAPIKey() != "" {
+		return APIKeys
+	}
+
+	return profileAuthType
 }
 
 // SetAuthType sets the configured auth type.

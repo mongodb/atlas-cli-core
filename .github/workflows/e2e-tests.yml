@@ -52,3 +52,5 @@ jobs:
           name: e2e-test-results
           path: e2e-tests.xml
           retention-days: 7
+      # E2E tests focus on integration testing rather than code coverage
+      # Coverage metrics are primarily collected from unit tests

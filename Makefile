@@ -1,6 +1,8 @@
 TEST_CMD?=go test
 E2E_TEST_PACKAGES?=./test/e2e/...
 COVERAGE=coverage.out
+E2E_COVERAGE=e2e-coverage.out
+MERGED_COVERAGE=merged-coverage.out
 
 
 ifeq ($(OS),Windows_NT)
@@ -15,12 +17,26 @@ export GOTOOLCHAIN := local
 .PHONY: unit-test
 unit-test: ## Run unit-tests
 	@echo "==> Running unit tests..."
-	$(TEST_CMD) -short -cover -count=1 -coverprofile $(COVERAGE) ./...
+	$(TEST_CMD) -short -covermode=atomic -count=1 -coverprofile $(COVERAGE) ./...
 
 .PHONY: e2e-test
 e2e-test: ## Run end-to-end tests
 	@echo "==> Running e2e tests..."
-	$(TEST_CMD) -v -p 1 -parallel 1 ${E2E_TEST_PACKAGES} -race -count=1 ./test/e2e/...
+	$(TEST_CMD) -v -p 1 -parallel 1 -race -count=1 -covermode=atomic -coverprofile $(E2E_COVERAGE) -coverpkg=./... ${E2E_TEST_PACKAGES}
+
+.PHONY: merge-coverage
+merge-coverage: ## Merge unit and e2e coverage reports
+	@echo "==> Merging coverage reports..."
+	@if [ -f $(COVERAGE) ] && [ -f $(E2E_COVERAGE) ]; then \
+		gocovmerge $(COVERAGE) $(E2E_COVERAGE) > $(MERGED_COVERAGE); \
+	elif [ -f $(COVERAGE) ]; then \
+		cp $(COVERAGE) $(MERGED_COVERAGE); \
+	elif [ -f $(E2E_COVERAGE) ]; then \
+		cp $(E2E_COVERAGE) $(MERGED_COVERAGE); \
+	else \
+		echo "No coverage files found"; \
+		exit 1; \
+	fi
 
 .PHONY: gen-mocks
 gen-mocks: ## Generate mocks

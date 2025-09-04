@@ -59,11 +59,87 @@ jobs:
           paths: unit-tests.xml
         if: always() && matrix.os == 'ubuntu-latest'
       - name: Upload coverage file
-        if: matrix.os == 'ubuntu-latest' && github.event_name == 'pull_request'
+        if: matrix.os == 'ubuntu-latest'
         uses: actions/upload-artifact@v4
         with:
-          name: coverage-file
+          name: unit-coverage-file
           path: coverage.out
+  
+  e2e-tests:
+    env:
+      E2E_COVERAGE: e2e-coverage.out
+      TEST_CMD: gotestsum --junitfile e2e-tests.xml --format standard-verbose --
+      E2E_TEST_PACKAGES: ./test/e2e/...
+      MONGODB_ATLAS_ORG_ID: ${{ secrets.MONGODB_ATLAS_ORG_ID }}
+      MONGODB_ATLAS_PUBLIC_API_KEY: ${{ secrets.MONGODB_ATLAS_PUBLIC_API_KEY }}
+      MONGODB_ATLAS_PRIVATE_API_KEY: ${{ secrets.MONGODB_ATLAS_PRIVATE_API_KEY }}
+      MONGODB_ATLAS_OPS_MANAGER_URL: ${{ secrets.MONGODB_ATLAS_OPS_MANAGER_URL }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: GitHubSecurityLab/actions-permissions/monitor@v1
+        if: ${{ matrix.os=='ubuntu-latest' }}
+        with:
+          config: ${{ vars.PERMISSIONS_CONFIG }}
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Install Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: 'go.mod'
+      - run: go install gotest.tools/gotestsum@latest
+      - name: Run E2E Tests
+        run: make e2e-test
+      - name: Test Summary
+        id: test_summary
+        uses: test-summary/action@31493c76ec9e7aa675f1585d3ed6f1da69269a86
+        with:
+          paths: e2e-tests.xml
+        if: always() && matrix.os == 'ubuntu-latest'
+      - name: Upload e2e coverage file
+        if: matrix.os == 'ubuntu-latest'
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-coverage-file
+          path: e2e-coverage.out
+
+  coverage:
+    needs: [unit-tests, e2e-tests]
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Install Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: 'go.mod'
+      - name: Install gocovmerge
+        run: go install github.com/wadey/gocovmerge@latest
+      - name: Download unit coverage
+        uses: actions/download-artifact@v4
+        with:
+          name: unit-coverage-file
+        continue-on-error: true
+      - name: Download e2e coverage
+        uses: actions/download-artifact@v4
+        with:
+          name: e2e-coverage-file
+        continue-on-error: true
+      - name: Merge coverage reports
+        run: make merge-coverage
+        continue-on-error: true
+      - name: Upload merged coverage to Coveralls
+        uses: coverallsapp/github-action@v2
+        with:
+          file: merged-coverage.out
+          format: golang
+          github-token: ${{ secrets.COVERALLS_TOKEN }}
   shellcheck:
     name: shellcheck
     runs-on: ubuntu-latest

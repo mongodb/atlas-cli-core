@@ -64,6 +64,15 @@ jobs:
         with:
           name: coverage-file
           path: coverage.out
+      - name: Upload coverage to Coveralls
+        if: matrix.os == 'ubuntu-latest'
+        uses: shogo82148/actions-goveralls@v1
+        with:
+          path-to-profile: coverage.out
+          parallel: true
+          flag-name: Unit-${{ matrix.os }}
+        env:
+          COVERALLS_TOKEN: ${{ secrets.COVERALLS_TOKEN }}
   shellcheck:
     name: shellcheck
     runs-on: ubuntu-latest
@@ -146,3 +155,15 @@ jobs:
             echo "Try running: go mod tidy"
             exit 1
           fi
+  finish-coveralls:
+    name: finish-coveralls
+    needs: unit-tests
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Finish Coveralls
+        uses: shogo82148/actions-goveralls@v1
+        with:
+          parallel-finished: true
+        env:
+          COVERALLS_TOKEN: ${{ secrets.COVERALLS_TOKEN }}

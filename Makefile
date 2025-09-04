@@ -1,6 +1,7 @@
 TEST_CMD?=go test
 E2E_TEST_PACKAGES?=./test/e2e/...
 COVERAGE=coverage.out
+E2E_COVERAGE=e2e-coverage.out
 
 
 ifeq ($(OS),Windows_NT)
@@ -20,7 +21,7 @@ unit-test: ## Run unit-tests
 .PHONY: e2e-test
 e2e-test: ## Run end-to-end tests
 	@echo "==> Running e2e tests..."
-	$(TEST_CMD) -v -p 1 -parallel 1 ${E2E_TEST_PACKAGES} -race -count=1 ./test/e2e/...
+	$(TEST_CMD) -v -p 1 -parallel 1 -race -count=1 -coverprofile $(E2E_COVERAGE) ${E2E_TEST_PACKAGES}
 
 .PHONY: gen-mocks
 gen-mocks: ## Generate mocks

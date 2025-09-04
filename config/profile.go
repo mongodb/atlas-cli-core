@@ -315,19 +315,25 @@ const (
 	NoAuth         AuthMechanism = "no_auth"
 )
 
-// AuthType gets the configured auth type.
+// AuthType determines the auth type, prioritizing credentials set via
+// environment variables.
+// It first retrieves the auth type configured in the profile. If programmatic
+// credentials that do not match the profile's auth type are detected, AuthType
+// infers that these credentials were set via environment variables and returns
+// the corresponding auth type.
+// This assumes users will not explicitly export the auth type variable.
 func AuthType() AuthMechanism { return Default().AuthType() }
 func (p *Profile) AuthType() AuthMechanism {
-	configAuthType := AuthMechanism(p.GetString(AuthTypeField))
+	profileAuthType := AuthMechanism(p.GetString(AuthTypeField))
 
-	if configAuthType != ServiceAccount && ClientID() != "" && ClientSecret() != "" {
+	if profileAuthType != ServiceAccount && ClientID() != "" && ClientSecret() != "" {
 		return ServiceAccount
 	}
-	if configAuthType != APIKeys && PrivateAPIKey() != "" && PublicAPIKey() != "" {
+	if profileAuthType != APIKeys && PrivateAPIKey() != "" && PublicAPIKey() != "" {
 		return APIKeys
 	}
 
-	return configAuthType
+	return profileAuthType
 }
 
 // SetAuthType sets the configured auth type.

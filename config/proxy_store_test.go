@@ -152,7 +152,7 @@ func testGetHierarchicalValue(t *testing.T, store *ProxyStore, propertyName stri
 	if isSecure {
 		store.insecure.(*mocks.MockStore).EXPECT().
 			GetHierarchicalValue(profileName, propertyName).
-			Return(nil)
+			Return("redacted")
 		store.secure.(*mocks.MockSecureStore).EXPECT().
 			Get(profileName, propertyName).
 			Return(expectedValue)
@@ -174,6 +174,8 @@ func testSetProfileValue(t *testing.T, store *ProxyStore, propertyName string, i
 	if isSecure {
 		store.secure.(*mocks.MockSecureStore).EXPECT().
 			Set(profileName, propertyName, value)
+		store.insecure.(*mocks.MockStore).EXPECT().
+			SetProfileValue(profileName, propertyName, "redacted")
 	} else {
 		store.insecure.(*mocks.MockStore).EXPECT().
 			SetProfileValue(profileName, propertyName, value)
@@ -191,6 +193,9 @@ func testGetProfileValue(t *testing.T, store *ProxyStore, propertyName string, i
 		store.secure.(*mocks.MockSecureStore).EXPECT().
 			Get(profileName, propertyName).
 			Return(expectedValue)
+		store.insecure.(*mocks.MockStore).EXPECT().
+			GetProfileValue(profileName, propertyName).
+			Return("redacted")
 	} else {
 		store.insecure.(*mocks.MockStore).EXPECT().
 			GetProfileValue(profileName, propertyName).

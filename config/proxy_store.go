@@ -22,6 +22,7 @@ package config
 import (
 	"errors"
 	"slices"
+	"strings"
 
 	"github.com/mongodb/atlas-cli-core/config/secure"
 	"github.com/spf13/afero"
@@ -113,23 +114,27 @@ func (p *ProxyStore) DeleteProfile(profileName string) error {
 
 // GetHierarchicalValue routes to secure or insecure store based on property type.
 // For secure properties, it first checks the insecure store for a value, in the
-// case that environment variables are used. If no value is found, it will proceed
-// with secure store.
+// case that environment variables are used. If no valid value is found, it will
+// proceed with secure store.
 func (p *ProxyStore) GetHierarchicalValue(profileName string, propertyName string) any {
 	val := p.insecure.GetHierarchicalValue(profileName, propertyName)
 
-	if isSecureProperty(propertyName) && val == nil {
-		return p.secure.Get(profileName, propertyName)
+	if isSecureProperty(propertyName) && (val == nil || strings.EqualFold(val.(string), "redacted")) {
+		val = p.secure.Get(profileName, propertyName)
 	}
 
 	return val
 }
 
 // SetProfileValue routes to secure or insecure store based on property type.
+// For secure properties, it stores the actual value in secure storage and
+// a "redacted" placeholder in the insecure store. This allows users to see
+// that a secure value is set without storing the sensitive data in insecure storage.
 func (p *ProxyStore) SetProfileValue(profileName string, propertyName string, value any) {
 	if isSecureProperty(propertyName) {
 		if v, ok := value.(string); ok {
 			p.secure.Set(profileName, propertyName, v)
+			p.insecure.SetProfileValue(profileName, propertyName, "redacted")
 		}
 		return
 	}
@@ -137,11 +142,17 @@ func (p *ProxyStore) SetProfileValue(profileName string, propertyName string, va
 }
 
 // GetProfileValue routes to secure or insecure store based on property type.
+// For secure properties, it first checks the insecure store for a value, in the
+// case that environment variables are used. If no valid value is found, it will
+// proceed with secure store.
 func (p *ProxyStore) GetProfileValue(profileName string, propertyName string) any {
-	if isSecureProperty(propertyName) {
-		return p.secure.Get(profileName, propertyName)
+	val := p.insecure.GetProfileValue(profileName, propertyName)
+
+	if isSecureProperty(propertyName) && (val == nil || strings.EqualFold(val.(string), "redacted")) {
+		val = p.secure.Get(profileName, propertyName)
 	}
-	return p.insecure.GetProfileValue(profileName, propertyName)
+
+	return val
 }
 
 // GetProfileStringMap returns insecure properties only, excluding secure values.

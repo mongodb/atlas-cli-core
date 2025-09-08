@@ -1,5 +1,7 @@
 # Atlas CLI Core
 
+[![Coverage Status](https://coveralls.io/repos/github/mongodb/atlas-cli-core/badge.svg?branch=master)](https://coveralls.io/github/mongodb/atlas-cli-core?branch=master)
+
 Atlas CLI Core is a Go library that provides the foundational configuration and profile management functionality for developing MongoDB Atlas CLI plugins. It serves as the core component for handling authentication, configuration management, and profile operations in Atlas CLI plugin development.
 
 ## What is Atlas CLI Core?

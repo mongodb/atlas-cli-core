@@ -17,6 +17,7 @@ package e2e
 import (
 	"os"
 	"path"
+	"path/filepath"
 	"testing"
 
 	"github.com/mongodb/atlas-cli-core/config"
@@ -26,12 +27,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestConfigLoadingE2E tests the complete config loading flow in a real environment
+// TestConfig tests the complete config loading flow in a real environment
 func TestConfig(t *testing.T) {
-	if testing.Short() {
-		t.Skip("skipping test in short mode")
-	}
-
 	t.Run("LoadAtlasCLIConfig with empty config succeeds", func(t *testing.T) {
 		dir := internal.TempConfigFolder(t)
 		configPath := path.Join(dir, "config.toml")
@@ -164,6 +161,91 @@ func TestConfigWithEnvironmentVariables(t *testing.T) {
 		assert.Equal(t, "legacy_private", config.PrivateAPIKey())
 		assert.Equal(t, "legacy_org", config.OrgID())
 		assert.Equal(t, config.APIKeys, config.AuthType())
+	})
+}
+
+// TestMixedConfigurationSources tests that we can load and initialize config from environment variables and file.
+func TestMixedConfigurationSources(t *testing.T) {
+	t.Run("EnvironmentOverridesFile", func(t *testing.T) {
+		dir := internal.TempConfigFolder(t)
+		viper.Reset()
+
+		// Create config file with values
+		configPath := filepath.Join(dir, "config.toml")
+		configContent := `version = 2
+[default]
+project_id = "file_project"
+org_id = "file_org"
+public_api_key = "file_public"
+private_api_key = "file_private"
+service = "cloud"
+`
+		err := os.WriteFile(configPath, []byte(configContent), 0600)
+		require.NoError(t, err)
+
+		// Set environment variables that should override file
+		t.Setenv("MONGODB_ATLAS_PROJECT_ID", "env_project")
+		t.Setenv("MONGODB_ATLAS_ORG_ID", "env_org")
+
+		_, err = config.LoadAtlasCLIConfig()
+		require.NoError(t, err)
+
+		err = config.InitProfile("")
+		require.NoError(t, err)
+
+		// Environment should override file
+		assert.Equal(t, "env_project", config.ProjectID())
+		assert.Equal(t, "env_org", config.OrgID())
+		// File values should be used where no env override
+		assert.Equal(t, "file_public", config.PublicAPIKey())
+		assert.Equal(t, "file_private", config.PrivateAPIKey())
+	})
+
+	t.Run("MCLIFallbackWhenNoAtlasEnv", func(t *testing.T) {
+		internal.TempConfigFolder(t)
+		viper.Reset()
+
+		// Set only MCLI vars when MONGODB_ATLAS vars are not present
+		t.Setenv("MCLI_PROJECT_ID", "mcli_project")
+		t.Setenv("MCLI_ORG_ID", "mcli_org")
+
+		_, err := config.LoadAtlasCLIConfig()
+		require.NoError(t, err)
+
+		err = config.InitProfile("")
+		require.NoError(t, err)
+
+		assert.Equal(t, "mcli_project", config.ProjectID())
+		assert.Equal(t, "mcli_org", config.OrgID())
+	})
+
+	t.Run("ProfileSpecificVsGlobalProperties", func(t *testing.T) {
+		dir := internal.TempConfigFolder(t)
+		viper.Reset()
+
+		// Create config with global and profile-specific settings
+		configPath := filepath.Join(dir, "config.toml")
+		configContent := `version = 2
+skip_update_check = true
+telemetry_enabled = false
+
+[test-profile]
+project_id = "profile_project"
+service = "cloud"
+`
+		err := os.WriteFile(configPath, []byte(configContent), 0600)
+		require.NoError(t, err)
+
+		_, err = config.LoadAtlasCLIConfig()
+		require.NoError(t, err)
+
+		err = config.InitProfile("test-profile")
+		require.NoError(t, err)
+
+		assert.Equal(t, "test-profile", config.Name())
+		assert.Equal(t, "profile_project", config.ProjectID())
+		assert.True(t, config.SkipUpdateCheck())
+		assert.False(t, config.TelemetryEnabled())
 	})
 }
 

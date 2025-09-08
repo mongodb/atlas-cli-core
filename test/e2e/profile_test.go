@@ -26,9 +26,9 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestAtlasCLICoreLibrary tests the most essential library functionality that plugin developers use.
+// TestInitProfile tests the most essential library functionality that plugin developers use.
 // This focuses on the core workflow without trying to test every edge case.
-func TestAtlasCLICoreLibrary(t *testing.T) {
+func TestInitProfile(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping test in short mode")
 	}
@@ -68,7 +68,7 @@ func TestAtlasCLICoreLibrary(t *testing.T) {
 	assert.Contains(t, profiles, profileName)
 }
 
-func TestProfileValidationE2E(t *testing.T) {
+func TestProfileValidation(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping test in short mode")
 	}
@@ -91,7 +91,7 @@ service = "unsupported"
 		require.NoError(t, err)
 
 		err = config.InitProfile("invalid-service")
-		assert.Error(t, err)
+		require.Error(t, err)
 		assert.Contains(t, err.Error(), "unsupported service")
 	})
 
@@ -136,7 +136,7 @@ project_id = "test_project"
 		err = config.SetName("default-profile")
 		require.NoError(t, err)
 		assert.True(t, config.IsCloud())
-		assert.Equal(t, "", config.Service())
+		assert.Empty(t, config.Service())
 	})
 
 	t.Run("ProfileNameCaseInsensitive", func(t *testing.T) {

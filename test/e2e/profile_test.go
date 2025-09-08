@@ -16,27 +16,24 @@ package e2e
 
 import (
 	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/mongodb/atlas-cli-core/config"
+	"github.com/mongodb/atlas-cli-core/test/internal"
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-// TestAtlasCLICoreLibrary tests the most essential library functionality that plugin developers use.
+// TestInitProfile tests the most essential library functionality that plugin developers use.
 // This focuses on the core workflow without trying to test every edge case.
-func TestAtlasCLICoreLibrary(t *testing.T) {
+func TestInitProfile(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping test in short mode")
 	}
 
-	tempDir := t.TempDir()
-
-	// Set environment variable to override config directory
-	// This must be done before any config operations
-	t.Setenv("XDG_CONFIG_HOME", tempDir)
-
+	_ = internal.TempConfigFolder(t)
 	// Clear and reconfigure viper for isolated test
 	viper.Reset()
 
@@ -64,4 +61,123 @@ func TestAtlasCLICoreLibrary(t *testing.T) {
 	// Test profile listing
 	profiles := config.List()
 	assert.Contains(t, profiles, profileName)
+}
+
+func TestProfileValidation(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping test in short mode")
+	}
+
+	t.Run("UnsupportedServiceType", func(t *testing.T) {
+		dir := internal.TempConfigFolder(t)
+		viper.Reset()
+
+		configPath := filepath.Join(dir, "config.toml")
+		configContent := `version = 2
+
+[invalid-service]
+project_id = "test_project"
+service = "unsupported"
+`
+		err := os.WriteFile(configPath, []byte(configContent), 0600)
+		require.NoError(t, err)
+
+		_, err = config.LoadAtlasCLIConfig()
+		require.NoError(t, err)
+
+		err = config.InitProfile("invalid-service")
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "unsupported service")
+	})
+
+	t.Run("ValidCloudServices", func(t *testing.T) {
+		dir := internal.TempConfigFolder(t)
+		viper.Reset()
+
+		configPath := filepath.Join(dir, "config.toml")
+		configContent := `version = 2
+
+[cloud-profile]
+project_id = "test_project"
+service = "cloud"
+
+[cloudgov-profile]
+project_id = "test_project"
+service = "cloudgov"
+
+[default-profile]
+project_id = "test_project"
+# no service specified - should default to cloud
+`
+		err := os.WriteFile(configPath, []byte(configContent), 0600)
+		require.NoError(t, err)
+
+		_, err = config.LoadAtlasCLIConfig()
+		require.NoError(t, err)
+
+		// Test cloud service
+		err = config.InitProfile("cloud-profile")
+		require.NoError(t, err)
+		assert.True(t, config.IsCloud())
+		assert.Equal(t, "cloud", config.Service())
+
+		// Test cloudgov service
+		err = config.SetName("cloudgov-profile")
+		require.NoError(t, err)
+		assert.True(t, config.IsCloud())
+		assert.Equal(t, "cloudgov", config.Service())
+
+		// Test default (empty) service
+		err = config.SetName("default-profile")
+		require.NoError(t, err)
+		assert.True(t, config.IsCloud())
+		assert.Empty(t, config.Service())
+	})
+
+	t.Run("ProfileNameCaseInsensitive", func(t *testing.T) {
+		dir := internal.TempConfigFolder(t)
+		viper.Reset()
+
+		configPath := filepath.Join(dir, "config.toml")
+		configContent := `version = 2
+
+[test-profile]
+project_id = "test_project"
+service = "cloud"
+`
+		err := os.WriteFile(configPath, []byte(configContent), 0600)
+		require.NoError(t, err)
+
+		_, err = config.LoadAtlasCLIConfig()
+		require.NoError(t, err)
+
+		// Profile names should be case-insensitive
+		err = config.InitProfile("TEST-PROFILE")
+		require.NoError(t, err)
+		assert.Equal(t, "test-profile", config.Name())
+
+		err = config.SetName("Test-Profile")
+		require.NoError(t, err)
+		assert.Equal(t, "test-profile", config.Name())
+	})
+
+	t.Run("NonexistentProfileHandling", func(t *testing.T) {
+		internal.TempConfigFolder(t)
+		viper.Reset()
+
+		_, err := config.LoadAtlasCLIConfig()
+		require.NoError(t, err)
+
+		// Initialize with non-existent profile name should succeed
+		err = config.InitProfile("new-profile")
+		require.NoError(t, err)
+		assert.Equal(t, "new-profile", config.Name())
+
+		// Profile doesn't exist in the store until we set some values
+		config.Set("project_id", "test_project")
+		config.Set("service", "cloud")
+
+		// Now it should exist
+		assert.True(t, config.Exists("new-profile"))
+	})
 }

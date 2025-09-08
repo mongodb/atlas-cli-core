@@ -309,7 +309,7 @@ service = "cloud"
 		require.NoError(t, err)
 
 		// Load config again
-		profile, err = config.LoadAtlasCLIConfig()
+		_, err = config.LoadAtlasCLIConfig()
 		require.NoError(t, err)
 
 		profiles := config.List()

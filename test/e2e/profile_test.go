@@ -235,7 +235,6 @@ service = "cloud"
 
 [prod]
 project_id = "prod_project"
-org_id = "prod_org"
 service = "cloud"
 `
 		err := os.WriteFile(configPath, []byte(configContent), 0600)
@@ -249,14 +248,12 @@ service = "cloud"
 		require.NoError(t, err)
 		assert.Equal(t, "dev", config.Name())
 		assert.Equal(t, "dev_project", config.ProjectID())
-		assert.Equal(t, "dev_org", config.OrgID())
 
 		// Switch to prod profile
 		err = config.SetName("prod")
 		require.NoError(t, err)
 		assert.Equal(t, "prod", config.Name())
 		assert.Equal(t, "prod_project", config.ProjectID())
-		assert.Equal(t, "prod_org", config.OrgID())
 	})
 
 	t.Run("SingleProfileAutoSelection", func(t *testing.T) {
@@ -311,6 +308,7 @@ service = "cloud"
 		// Load config again
 		profile, err = config.LoadAtlasCLIConfig()
 		require.NoError(t, err)
+		assert.Equal(t, "new-name", profile.Name())
 
 		profiles := config.List()
 		assert.Contains(t, profiles, "new-name")

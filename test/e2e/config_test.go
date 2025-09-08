@@ -78,10 +78,6 @@ func TestConfig(t *testing.T) {
 
 // TestConfigWithEnvironmentVariables tests that we can load and initialize config from environment variables.
 func TestConfigWithEnvironmentVariables(t *testing.T) {
-	if testing.Short() {
-		t.Skip("skipping test in short mode")
-	}
-
 	t.Run("APIKeysFromEnvironment", func(t *testing.T) {
 		internal.TempConfigFolder(t)
 		viper.Reset()
@@ -176,8 +172,8 @@ func TestMixedConfigurationSources(t *testing.T) {
 [default]
 project_id = "file_project"
 org_id = "file_org"
-public_api_key = "file_public"
-private_api_key = "file_private"
+client_id = "file_client_id"
+client_secret = "file_client_secret"
 service = "cloud"
 `
 		err := os.WriteFile(configPath, []byte(configContent), 0600)
@@ -190,15 +186,15 @@ service = "cloud"
 		_, err = config.LoadAtlasCLIConfig()
 		require.NoError(t, err)
 
-		err = config.InitProfile("")
+		err = config.InitProfile("default")
 		require.NoError(t, err)
 
 		// Environment should override file
 		assert.Equal(t, "env_project", config.ProjectID())
 		assert.Equal(t, "env_org", config.OrgID())
 		// File values should be used where no env override
-		assert.Equal(t, "file_public", config.PublicAPIKey())
-		assert.Equal(t, "file_private", config.PrivateAPIKey())
+		assert.Equal(t, "file_client_id", config.ClientID())
+		assert.Equal(t, "file_client_secret", config.ClientSecret())
 	})
 
 	t.Run("MCLIFallbackWhenNoAtlasEnv", func(t *testing.T) {

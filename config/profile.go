@@ -56,6 +56,7 @@ const (
 	configPerm               = 0600
 	defaultPermissions       = 0700
 	skipUpdateCheck          = "skip_update_check"
+	silenceStorageWarning    = "silence_storage_warning"
 	TelemetryEnabledProperty = "telemetry_enabled"
 	AtlasCLI                 = "atlascli"
 	ContainerizedHostNameEnv = "MONGODB_ATLAS_IS_CONTAINERIZED"
@@ -148,6 +149,7 @@ func AllProperties() []string {
 func BooleanProperties() []string {
 	return []string{
 		skipUpdateCheck,
+		silenceStorageWarning,
 		TelemetryEnabledProperty,
 	}
 }
@@ -176,6 +178,7 @@ func GlobalProperties() []string {
 		LocalDeploymentImage,
 		mongoShellPath,
 		skipUpdateCheck,
+		silenceStorageWarning,
 		TelemetryEnabledProperty,
 	}
 }
@@ -519,6 +522,18 @@ func (p *Profile) SkipUpdateCheck() bool {
 func SetSkipUpdateCheck(v bool) { Default().SetSkipUpdateCheck(v) }
 func (*Profile) SetSkipUpdateCheck(v bool) {
 	SetGlobal(skipUpdateCheck, v)
+}
+
+// SilenceStorageWarning get the global silence storage warning.
+func SilenceStorageWarning() bool { return Default().SilenceStorageWarning() }
+func (p *Profile) SilenceStorageWarning() bool {
+	return p.GetBool(silenceStorageWarning)
+}
+
+// SetSilenceStorageWarning sets the global silence storage warning.
+func SetSilenceStorageWarning(v bool) { Default().SetSilenceStorageWarning(v) }
+func (*Profile) SetSilenceStorageWarning(v bool) {
+	SetGlobal(silenceStorageWarning, v)
 }
 
 // IsTelemetryEnabledSet return true if telemetry_enabled has been set.

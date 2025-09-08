@@ -273,6 +273,7 @@ func withNewConfig(t *testing.T) {
 
 	err := os.WriteFile(configPath, []byte(`
   version = 2
+  silence_storage_warning = true
   [config_test]
   org_id = "new_config_org_id"
   client_id = "new_config_client_id"

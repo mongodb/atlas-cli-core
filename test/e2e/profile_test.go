@@ -183,6 +183,9 @@ service = "cloud"
 }
 
 func TestMultipleProfilesE2E(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping test in short mode")
+	}
 	t.Run("ProfileCreationAndListing", func(t *testing.T) {
 		dir := internal.TempConfigFolder(t)
 		viper.Reset()
@@ -308,10 +311,14 @@ service = "cloud"
 		// Load config again
 		profile, err = config.LoadAtlasCLIConfig()
 		require.NoError(t, err)
-		assert.Equal(t, "new-name", profile.Name())
 
 		profiles := config.List()
 		assert.Contains(t, profiles, "new-name")
 		assert.NotContains(t, profiles, "old-name")
+
+		// init profile
+		err = config.InitProfile("")
+		require.NoError(t, err)
+		assert.Equal(t, "new-name", config.Name())
 	})
 }

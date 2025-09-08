@@ -19,6 +19,7 @@ import (
 	"testing"
 
 	"github.com/mongodb/atlas-cli-core/config"
+	"github.com/mongodb/atlas-cli-core/test/internal"
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -64,4 +65,91 @@ func TestAtlasCLICoreLibrary(t *testing.T) {
 	// Test profile listing
 	profiles := config.List()
 	assert.Contains(t, profiles, profileName)
+}
+
+func TestProfileInitializationWithEnvironmentVariables(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping test in short mode")
+	}
+
+	t.Run("APIKeysFromEnvironment", func(t *testing.T) {
+		internal.TempConfigFolder(t)
+		viper.Reset()
+
+		t.Setenv("MONGODB_ATLAS_PUBLIC_API_KEY", "test_public_key")
+		t.Setenv("MONGODB_ATLAS_PRIVATE_API_KEY", "test_private_key")
+		t.Setenv("MONGODB_ATLAS_PROJECT_ID", "test_project_id")
+		t.Setenv("MONGODB_ATLAS_ORG_ID", "test_org_id")
+
+		profile, err := config.LoadAtlasCLIConfig()
+		require.NoError(t, err)
+
+		err = config.InitProfile("")
+		require.NoError(t, err)
+
+		assert.Equal(t, "test_public_key", config.PublicAPIKey())
+		assert.Equal(t, "test_private_key", config.PrivateAPIKey())
+		assert.Equal(t, "test_project_id", config.ProjectID())
+		assert.Equal(t, "test_org_id", config.OrgID())
+		assert.Equal(t, config.APIKeys, config.AuthType())
+		assert.Equal(t, "default", profile.Name())
+	})
+
+	t.Run("ServiceAccountFromEnvironment", func(t *testing.T) {
+		internal.TempConfigFolder(t)
+		viper.Reset()
+
+		t.Setenv("MONGODB_ATLAS_CLIENT_ID", "test_client_id")
+		t.Setenv("MONGODB_ATLAS_CLIENT_SECRET", "test_client_secret")
+		t.Setenv("MONGODB_ATLAS_PROJECT_ID", "test_project_id")
+
+		profile, err := config.LoadAtlasCLIConfig()
+		require.NoError(t, err)
+
+		err = config.InitProfile("")
+		require.NoError(t, err)
+
+		assert.Equal(t, "test_client_id", config.ClientID())
+		assert.Equal(t, "test_client_secret", config.ClientSecret())
+		assert.Equal(t, "test_project_id", config.ProjectID())
+		assert.Equal(t, config.ServiceAccount, config.AuthType())
+		assert.Equal(t, "default", profile.Name())
+	})
+
+	t.Run("ProfileSelectionFromEnvironment", func(t *testing.T) {
+		internal.TempConfigFolder(t)
+		viper.Reset()
+
+		t.Setenv("MONGODB_ATLAS_PROFILE", "env-profile")
+		t.Setenv("MONGODB_ATLAS_PROJECT_ID", "env_project")
+
+		_, err := config.LoadAtlasCLIConfig()
+		require.NoError(t, err)
+
+		err = config.InitProfile("")
+		require.NoError(t, err)
+
+		assert.Equal(t, "env-profile", config.Name())
+		assert.Equal(t, "env_project", config.ProjectID())
+	})
+
+	t.Run("LegacyMCLIPrefix", func(t *testing.T) {
+		internal.TempConfigFolder(t)
+		viper.Reset()
+
+		t.Setenv("MCLI_PUBLIC_API_KEY", "legacy_public")
+		t.Setenv("MCLI_PRIVATE_API_KEY", "legacy_private")
+		t.Setenv("MCLI_ORG_ID", "legacy_org")
+
+		_, err := config.LoadAtlasCLIConfig()
+		require.NoError(t, err)
+
+		err = config.InitProfile("")
+		require.NoError(t, err)
+
+		assert.Equal(t, "legacy_public", config.PublicAPIKey())
+		assert.Equal(t, "legacy_private", config.PrivateAPIKey())
+		assert.Equal(t, "legacy_org", config.OrgID())
+		assert.Equal(t, config.APIKeys, config.AuthType())
+	})
 }

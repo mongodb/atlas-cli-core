@@ -181,3 +181,144 @@ service = "cloud"
 		assert.True(t, config.Exists("new-profile"))
 	})
 }
+
+func TestMultipleProfilesE2E(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping test in short mode")
+	}
+	t.Run("ProfileCreationAndListing", func(t *testing.T) {
+		dir := internal.TempConfigFolder(t)
+		viper.Reset()
+
+		// Create config with multiple profiles
+		configPath := filepath.Join(dir, "config.toml")
+		configContent := `version = 2
+
+[dev]
+project_id = "dev_project"
+service = "cloud"
+
+[prod]
+project_id = "prod_project"
+service = "cloud"
+
+[staging]
+project_id = "staging_project"
+service = "cloud"
+`
+		err := os.WriteFile(configPath, []byte(configContent), 0600)
+		require.NoError(t, err)
+
+		_, err = config.LoadAtlasCLIConfig()
+		require.NoError(t, err)
+
+		profiles := config.List()
+		assert.Contains(t, profiles, "dev")
+		assert.Contains(t, profiles, "prod")
+		assert.Contains(t, profiles, "staging")
+		assert.Len(t, profiles, 3)
+
+		// Test profile existence
+		assert.True(t, config.Exists("dev"))
+		assert.True(t, config.Exists("prod"))
+		assert.False(t, config.Exists("nonexistent"))
+	})
+
+	t.Run("ProfileSwitching", func(t *testing.T) {
+		dir := internal.TempConfigFolder(t)
+		viper.Reset()
+
+		configPath := filepath.Join(dir, "config.toml")
+		configContent := `version = 2
+
+[dev]
+project_id = "dev_project"
+org_id = "dev_org"
+service = "cloud"
+
+[prod]
+project_id = "prod_project"
+service = "cloud"
+`
+		err := os.WriteFile(configPath, []byte(configContent), 0600)
+		require.NoError(t, err)
+
+		_, err = config.LoadAtlasCLIConfig()
+		require.NoError(t, err)
+
+		// Switch to dev profile
+		err = config.InitProfile("dev")
+		require.NoError(t, err)
+		assert.Equal(t, "dev", config.Name())
+		assert.Equal(t, "dev_project", config.ProjectID())
+
+		// Switch to prod profile
+		err = config.SetName("prod")
+		require.NoError(t, err)
+		assert.Equal(t, "prod", config.Name())
+		assert.Equal(t, "prod_project", config.ProjectID())
+	})
+
+	t.Run("SingleProfileAutoSelection", func(t *testing.T) {
+		dir := internal.TempConfigFolder(t)
+		viper.Reset()
+
+		configPath := filepath.Join(dir, "config.toml")
+		configContent := `version = 2
+
+[single-profile]
+project_id = "single_project"
+service = "cloud"
+`
+		err := os.WriteFile(configPath, []byte(configContent), 0600)
+		require.NoError(t, err)
+
+		_, err = config.LoadAtlasCLIConfig()
+		require.NoError(t, err)
+
+		// Should auto-select the single available profile
+		err = config.InitProfile("")
+		require.NoError(t, err)
+		assert.Equal(t, "single-profile", config.Name())
+		assert.Equal(t, "single_project", config.ProjectID())
+	})
+
+	t.Run("ProfileRenaming", func(t *testing.T) {
+		dir := internal.TempConfigFolder(t)
+		viper.Reset()
+
+		configPath := filepath.Join(dir, "config.toml")
+		configContent := `version = 2
+
+[old-name]
+project_id = "test_project"
+service = "cloud"
+`
+		err := os.WriteFile(configPath, []byte(configContent), 0600)
+		require.NoError(t, err)
+
+		profile, err := config.LoadAtlasCLIConfig()
+		require.NoError(t, err)
+
+		err = config.InitProfile("old-name")
+		require.NoError(t, err)
+		assert.Equal(t, "old-name", profile.Name())
+
+		// Rename profile
+		err = profile.Rename("new-name")
+		require.NoError(t, err)
+
+		// Load config again
+		_, err = config.LoadAtlasCLIConfig()
+		require.NoError(t, err)
+
+		profiles := config.List()
+		assert.Contains(t, profiles, "new-name")
+		assert.NotContains(t, profiles, "old-name")
+
+		// init profile
+		err = config.InitProfile("")
+		require.NoError(t, err)
+		assert.Equal(t, "new-name", config.Name())
+	})
+}

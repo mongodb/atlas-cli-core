@@ -29,6 +29,10 @@ import (
 
 // TestConfig tests the complete config loading flow in a real environment
 func TestConfig(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping test in short mode")
+	}
+
 	t.Run("LoadAtlasCLIConfig with empty config succeeds", func(t *testing.T) {
 		dir := internal.TempConfigFolder(t)
 		configPath := path.Join(dir, "config.toml")

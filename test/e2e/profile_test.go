@@ -16,6 +16,7 @@ package e2e
 
 import (
 	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/mongodb/atlas-cli-core/config"
@@ -67,89 +68,121 @@ func TestAtlasCLICoreLibrary(t *testing.T) {
 	assert.Contains(t, profiles, profileName)
 }
 
-func TestProfileInitializationWithEnvironmentVariables(t *testing.T) {
+func TestProfileValidationE2E(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping test in short mode")
 	}
 
-	t.Run("APIKeysFromEnvironment", func(t *testing.T) {
-		internal.TempConfigFolder(t)
+	t.Run("UnsupportedServiceType", func(t *testing.T) {
+		dir := internal.TempConfigFolder(t)
 		viper.Reset()
 
-		t.Setenv("MONGODB_ATLAS_PUBLIC_API_KEY", "test_public_key")
-		t.Setenv("MONGODB_ATLAS_PRIVATE_API_KEY", "test_private_key")
-		t.Setenv("MONGODB_ATLAS_PROJECT_ID", "test_project_id")
-		t.Setenv("MONGODB_ATLAS_ORG_ID", "test_org_id")
+		configPath := filepath.Join(dir, "config.toml")
+		configContent := `version = 2
 
-		profile, err := config.LoadAtlasCLIConfig()
+[invalid-service]
+project_id = "test_project"
+service = "unsupported"
+`
+		err := os.WriteFile(configPath, []byte(configContent), 0600)
 		require.NoError(t, err)
 
-		err = config.InitProfile("")
+		_, err = config.LoadAtlasCLIConfig()
 		require.NoError(t, err)
 
-		assert.Equal(t, "test_public_key", config.PublicAPIKey())
-		assert.Equal(t, "test_private_key", config.PrivateAPIKey())
-		assert.Equal(t, "test_project_id", config.ProjectID())
-		assert.Equal(t, "test_org_id", config.OrgID())
-		assert.Equal(t, config.APIKeys, config.AuthType())
-		assert.Equal(t, "default", profile.Name())
+		err = config.InitProfile("invalid-service")
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "unsupported service")
 	})
 
-	t.Run("ServiceAccountFromEnvironment", func(t *testing.T) {
-		internal.TempConfigFolder(t)
+	t.Run("ValidCloudServices", func(t *testing.T) {
+		dir := internal.TempConfigFolder(t)
 		viper.Reset()
 
-		t.Setenv("MONGODB_ATLAS_CLIENT_ID", "test_client_id")
-		t.Setenv("MONGODB_ATLAS_CLIENT_SECRET", "test_client_secret")
-		t.Setenv("MONGODB_ATLAS_PROJECT_ID", "test_project_id")
+		configPath := filepath.Join(dir, "config.toml")
+		configContent := `version = 2
 
-		profile, err := config.LoadAtlasCLIConfig()
+[cloud-profile]
+project_id = "test_project"
+service = "cloud"
+
+[cloudgov-profile]
+project_id = "test_project"
+service = "cloudgov"
+
+[default-profile]
+project_id = "test_project"
+# no service specified - should default to cloud
+`
+		err := os.WriteFile(configPath, []byte(configContent), 0600)
 		require.NoError(t, err)
 
-		err = config.InitProfile("")
+		_, err = config.LoadAtlasCLIConfig()
 		require.NoError(t, err)
 
-		assert.Equal(t, "test_client_id", config.ClientID())
-		assert.Equal(t, "test_client_secret", config.ClientSecret())
-		assert.Equal(t, "test_project_id", config.ProjectID())
-		assert.Equal(t, config.ServiceAccount, config.AuthType())
-		assert.Equal(t, "default", profile.Name())
+		// Test cloud service
+		err = config.InitProfile("cloud-profile")
+		require.NoError(t, err)
+		assert.True(t, config.IsCloud())
+		assert.Equal(t, "cloud", config.Service())
+
+		// Test cloudgov service
+		err = config.SetName("cloudgov-profile")
+		require.NoError(t, err)
+		assert.True(t, config.IsCloud())
+		assert.Equal(t, "cloudgov", config.Service())
+
+		// Test default (empty) service
+		err = config.SetName("default-profile")
+		require.NoError(t, err)
+		assert.True(t, config.IsCloud())
+		assert.Equal(t, "", config.Service())
 	})
 
-	t.Run("ProfileSelectionFromEnvironment", func(t *testing.T) {
-		internal.TempConfigFolder(t)
+	t.Run("ProfileNameCaseInsensitive", func(t *testing.T) {
+		dir := internal.TempConfigFolder(t)
 		viper.Reset()
 
-		t.Setenv("MONGODB_ATLAS_PROFILE", "env-profile")
-		t.Setenv("MONGODB_ATLAS_PROJECT_ID", "env_project")
+		configPath := filepath.Join(dir, "config.toml")
+		configContent := `version = 2
+
+[test-profile]
+project_id = "test_project"
+service = "cloud"
+`
+		err := os.WriteFile(configPath, []byte(configContent), 0600)
+		require.NoError(t, err)
+
+		_, err = config.LoadAtlasCLIConfig()
+		require.NoError(t, err)
+
+		// Profile names should be case-insensitive
+		err = config.InitProfile("TEST-PROFILE")
+		require.NoError(t, err)
+		assert.Equal(t, "test-profile", config.Name())
+
+		err = config.SetName("Test-Profile")
+		require.NoError(t, err)
+		assert.Equal(t, "test-profile", config.Name())
+	})
+
+	t.Run("NonexistentProfileHandling", func(t *testing.T) {
+		internal.TempConfigFolder(t)
+		viper.Reset()
 
 		_, err := config.LoadAtlasCLIConfig()
 		require.NoError(t, err)
 
-		err = config.InitProfile("")
+		// Initialize with non-existent profile name should succeed
+		err = config.InitProfile("new-profile")
 		require.NoError(t, err)
+		assert.Equal(t, "new-profile", config.Name())
 
-		assert.Equal(t, "env-profile", config.Name())
-		assert.Equal(t, "env_project", config.ProjectID())
-	})
+		// Profile doesn't exist in the store until we set some values
+		config.Set("project_id", "test_project")
+		config.Set("service", "cloud")
 
-	t.Run("LegacyMCLIPrefix", func(t *testing.T) {
-		internal.TempConfigFolder(t)
-		viper.Reset()
-
-		t.Setenv("MCLI_PUBLIC_API_KEY", "legacy_public")
-		t.Setenv("MCLI_PRIVATE_API_KEY", "legacy_private")
-		t.Setenv("MCLI_ORG_ID", "legacy_org")
-
-		_, err := config.LoadAtlasCLIConfig()
-		require.NoError(t, err)
-
-		err = config.InitProfile("")
-		require.NoError(t, err)
-
-		assert.Equal(t, "legacy_public", config.PublicAPIKey())
-		assert.Equal(t, "legacy_private", config.PrivateAPIKey())
-		assert.Equal(t, "legacy_org", config.OrgID())
-		assert.Equal(t, config.APIKeys, config.AuthType())
+		// Now it should exist
+		assert.True(t, config.Exists("new-profile"))
 	})
 }

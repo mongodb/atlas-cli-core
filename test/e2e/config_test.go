@@ -272,8 +272,8 @@ func withNewConfig(t *testing.T) {
 	configPath := path.Join(dir, "config.toml")
 
 	err := os.WriteFile(configPath, []byte(`
-  silence_storage_warning = true
   version = 2
+  silence_storage_warning = true
   [config_test]
   org_id = "new_config_org_id"
   client_id = "new_config_client_id"

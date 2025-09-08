@@ -73,8 +73,8 @@ func TestProfileValidation(t *testing.T) {
 		viper.Reset()
 
 		configPath := filepath.Join(dir, "config.toml")
-		configContent := `silence_storage_warning = true
-version = 2
+		configContent := `version = 2
+silence_storage_warning = true
 
 [invalid-service]
 project_id = "test_project"
@@ -96,8 +96,8 @@ service = "unsupported"
 		viper.Reset()
 
 		configPath := filepath.Join(dir, "config.toml")
-		configContent := `silence_storage_warning = true
-version = 2
+		configContent := `version = 2
+silence_storage_warning = true
 
 [cloud-profile]
 project_id = "test_project"
@@ -141,8 +141,8 @@ project_id = "test_project"
 		viper.Reset()
 
 		configPath := filepath.Join(dir, "config.toml")
-		configContent := `silence_storage_warning = true
-version = 2
+		configContent := `version = 2
+silence_storage_warning = true
 
 [test-profile]
 project_id = "test_project"
@@ -195,8 +195,8 @@ func TestMultipleProfilesE2E(t *testing.T) {
 
 		// Create config with multiple profiles
 		configPath := filepath.Join(dir, "config.toml")
-		configContent := `silence_storage_warning = true
-version = 2
+		configContent := `version = 2
+silence_storage_warning = true
 
 [dev]
 project_id = "dev_project"
@@ -233,8 +233,8 @@ service = "cloud"
 		viper.Reset()
 
 		configPath := filepath.Join(dir, "config.toml")
-		configContent := `silence_storage_warning = true
-version = 2
+		configContent := `version = 2
+silence_storage_warning = true
 
 [dev]
 project_id = "dev_project"
@@ -269,8 +269,8 @@ service = "cloud"
 		viper.Reset()
 
 		configPath := filepath.Join(dir, "config.toml")
-		configContent := `silence_storage_warning = true
-version = 2
+		configContent := `version = 2
+silence_storage_warning = true
 
 [single-profile]
 project_id = "single_project"
@@ -294,8 +294,8 @@ service = "cloud"
 		viper.Reset()
 
 		configPath := filepath.Join(dir, "config.toml")
-		configContent := `silence_storage_warning = true
-version = 2
+		configContent := `version = 2
+silence_storage_warning = true
 
 [old-name]
 project_id = "test_project"

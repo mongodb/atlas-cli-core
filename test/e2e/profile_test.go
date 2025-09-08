@@ -33,12 +33,7 @@ func TestInitProfile(t *testing.T) {
 		t.Skip("skipping test in short mode")
 	}
 
-	tempDir := t.TempDir()
-
-	// Set environment variable to override config directory
-	// This must be done before any config operations
-	t.Setenv("XDG_CONFIG_HOME", tempDir)
-
+	_ = internal.TempConfigFolder(t)
 	// Clear and reconfigure viper for isolated test
 	viper.Reset()
 

@@ -22,7 +22,10 @@ import (
 )
 
 // MaxSupportedVersion is the maximum supported config version available in AtlasCLI.
-const MaxSupportedVersion = 2
+const (
+	MaxSupportedVersion = 2
+	versionKey          = "version"
+)
 
 // CLIConfigHome retrieves configHome path.
 func CLIConfigHome() (string, error) {
@@ -88,12 +91,12 @@ func verifyConfigVersion(expectedVersion int64, s Store) error {
 		return nil
 	}
 
-	if !s.IsSetGlobal("version") {
+	if !s.IsSetGlobal(versionKey) {
 		// Scenario 1: User upgrades plugin but not AtlasCLI.
 		return fmt.Errorf("config version is missing, expected version %d. Please upgrade to a newer version of AtlasCLI", expectedVersion)
 	}
 
-	rawVersion := s.GetGlobalValue("version")
+	rawVersion := s.GetGlobalValue(versionKey)
 	version, ok := rawVersion.(int64)
 	if !ok {
 		return fmt.Errorf("invalid config version type: %T", rawVersion)

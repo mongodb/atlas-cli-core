@@ -45,7 +45,13 @@ type ProxyStore struct {
 
 // NewDefaultStore creates a store with default filesystem and secure storage if available.
 func NewDefaultStore() (Store, error) {
-	insecure, err := NewViperStore(afero.NewOsFs(), true)
+	return NewStoreWithEnvOption(true)
+}
+
+// NewStoreWithEnvOption creates a store with default filesystem and secure storage
+// if available. It will load environment variables according to the loadEnvVars input.
+func NewStoreWithEnvOption(loadEnvVars bool) (Store, error) {
+	insecure, err := NewViperStore(afero.NewOsFs(), loadEnvVars)
 
 	if err != nil {
 		return nil, err

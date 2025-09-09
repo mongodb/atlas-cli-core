@@ -20,7 +20,6 @@ import (
 	"fmt"
 	"os"
 	"slices"
-	"sort"
 	"strings"
 	"time"
 
@@ -587,34 +586,6 @@ func (p *Profile) IsAccessSet() bool {
 		p.ClientID() != "" && p.ClientSecret() != ""
 
 	return isSet
-}
-
-// Map returns a map describing the configuration.
-func Map() map[string]string { return Default().Map() }
-func (p *Profile) Map() map[string]string {
-	settings := p.configStore.GetProfileStringMap(p.Name())
-	profileSettings := make(map[string]string, len(settings)+1)
-	for k, v := range settings {
-		if k == privateAPIKey || k == AccessTokenField || k == RefreshTokenField || k == ClientSecretField {
-			profileSettings[k] = "redacted"
-		} else {
-			profileSettings[k] = v
-		}
-	}
-
-	return profileSettings
-}
-
-// SortedKeys returns the properties of the Profile sorted.
-func SortedKeys() []string { return Default().SortedKeys() }
-func (p *Profile) SortedKeys() []string {
-	config := p.Map()
-	keys := make([]string, 0, len(config))
-	for k := range config {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-	return keys
 }
 
 // Delete deletes an existing configuration. The profiles are reloaded afterwards, as

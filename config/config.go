@@ -69,15 +69,15 @@ func LoadAtlasCLIConfigWithVersion(expectedVersion int64) (*Profile, error) {
 		return nil, fmt.Errorf("error loading config: %w", err)
 	}
 
+	profile := NewProfile(DefaultProfile, configStore)
+	SetProfile(profile)
+
 	if !configStore.IsSecure() && !SilenceStorageWarning() {
 		fmt.Fprintf(os.Stderr, `
 Warning: Secure storage is not available, falling back to insecure storage
 To disable this alert, run "atlas config set silence_storage_warning true"
 `)
 	}
-
-	profile := NewProfile(DefaultProfile, configStore)
-	SetProfile(profile)
 
 	return profile, nil
 }

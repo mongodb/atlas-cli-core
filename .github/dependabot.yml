@@ -1,0 +1,21 @@
+version: 2
+updates:
+  - package-ecosystem: gomod
+    directory: "/"
+    target-branch: master
+    schedule:
+      interval: weekly
+      day: tuesday
+    open-pull-requests-limit: 20
+    reviewers:
+      - "mongodb/apix-2"
+    ignore:
+      - dependency-name: "go.mongodb.org/atlas-sdk/*"
+  - package-ecosystem: github-actions
+    directory: "/"
+    target-branch: master
+    schedule:
+      interval: weekly
+      day: tuesday
+    reviewers:
+      - "mongodb/apix-2"

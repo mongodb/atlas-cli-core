@@ -10,7 +10,7 @@ require (
 	github.com/spf13/viper v1.19.0
 	github.com/stretchr/testify v1.10.0
 	github.com/zalando/go-keyring v0.2.6
-	go.mongodb.org/atlas v0.36.0
+	go.mongodb.org/atlas v0.38.0
 	go.mongodb.org/atlas-sdk/v20250312006 v20250312006.0.0
 	go.uber.org/mock v0.6.0
 )

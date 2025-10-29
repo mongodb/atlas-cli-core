@@ -21,13 +21,33 @@ import (
 	"go.mongodb.org/atlas/auth"
 )
 
+//go:generate go tool go.uber.org/mock/mockgen -destination=mock_profile_provider.go -package=transport github.com/mongodb/atlas-cli-core/transport ProfileProvider
+
+// ProfileProvider defines the interface for profile operations needed by HTTP client creation.
+type ProfileProvider interface {
+	AuthType() config.AuthMechanism
+	PublicAPIKey() string
+	PrivateAPIKey() string
+	Token() (*auth.Token, error)
+	SetAccessToken(string)
+	SetRefreshToken(string)
+	Save() error
+	ClientID() string
+	ClientSecret() string
+	OpsManagerURL() string
+}
+
 func HTTPClient(version string, httpTransport http.RoundTripper) (*http.Client, error) {
-	switch config.AuthType() {
+	return HTTPClientFromProfile(config.Default(), version, httpTransport)
+}
+
+func HTTPClientFromProfile(profile ProfileProvider, version string, httpTransport http.RoundTripper) (*http.Client, error) {
+	switch profile.AuthType() {
 	case config.APIKeys:
-		t := NewDigestTransport(config.PublicAPIKey(), config.PrivateAPIKey(), httpTransport)
+		t := NewDigestTransport(profile.PublicAPIKey(), profile.PrivateAPIKey(), httpTransport)
 		return t.Client()
 	case config.UserAccount:
-		token, err := config.Token()
+		token, err := profile.Token()
 		if err != nil {
 			return nil, err
 		}
@@ -35,9 +55,9 @@ func HTTPClient(version string, httpTransport http.RoundTripper) (*http.Client, 
 		// If the token is not nil, we're using the access token transport
 		if token != nil {
 			tr, err := NewAccessTokenTransport(token, httpTransport, version, func(t *auth.Token) error {
-				config.SetAccessToken(t.AccessToken)
-				config.SetRefreshToken(t.RefreshToken)
-				return config.Save()
+				profile.SetAccessToken(t.AccessToken)
+				profile.SetRefreshToken(t.RefreshToken)
+				return profile.Save()
 			})
 			if err != nil {
 				return nil, err
@@ -48,7 +68,7 @@ func HTTPClient(version string, httpTransport http.RoundTripper) (*http.Client, 
 		// No token available, we're falling back to the default client (default branch)
 		fallthrough
 	case config.ServiceAccount:
-		return NewServiceAccountClientWithHost(config.ClientID(), config.ClientSecret(), config.OpsManagerURL()), nil
+		return NewServiceAccountClientWithHost(profile.ClientID(), profile.ClientSecret(), profile.OpsManagerURL()), nil
 	case config.NoAuth:
 		fallthrough
 	default:

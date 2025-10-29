@@ -60,7 +60,7 @@ jobs:
         if: always() && matrix.os == 'ubuntu-latest'
       - name: Upload coverage file
         if: matrix.os == 'ubuntu-latest'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: unit-coverage-file
           path: coverage.out
@@ -103,7 +103,7 @@ jobs:
         if: always() && matrix.os == 'ubuntu-latest'
       - name: Upload e2e coverage file
         if: matrix.os == 'ubuntu-latest'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: e2e-coverage-file
           path: e2e-coverage.out

@@ -31,15 +31,22 @@ func HTTPClient(version string, httpTransport http.RoundTripper) (*http.Client, 
 		if err != nil {
 			return nil, err
 		}
-		tr, err := NewAccessTokenTransport(token, httpTransport, version, func(t *auth.Token) error {
-			config.SetAccessToken(t.AccessToken)
-			config.SetRefreshToken(t.RefreshToken)
-			return config.Save()
-		})
-		if err != nil {
-			return nil, err
+
+		// If the token is not nil, we're using the access token transport
+		if token != nil {
+			tr, err := NewAccessTokenTransport(token, httpTransport, version, func(t *auth.Token) error {
+				config.SetAccessToken(t.AccessToken)
+				config.SetRefreshToken(t.RefreshToken)
+				return config.Save()
+			})
+			if err != nil {
+				return nil, err
+			}
+			return &http.Client{Transport: tr}, nil
 		}
-		return &http.Client{Transport: tr}, nil
+
+		// No token available, we're falling back to the default client (default branch)
+		fallthrough
 	case config.ServiceAccount:
 		return NewServiceAccountClientWithHost(config.ClientID(), config.ClientSecret(), config.OpsManagerURL()), nil
 	case config.NoAuth:

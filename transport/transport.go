@@ -16,6 +16,7 @@ package transport
 
 import (
 	"context"
+	"errors"
 	"net"
 	"net/http"
 	"strings"
@@ -72,6 +73,10 @@ func NewDigestTransport(username, password string, base http.RoundTripper) *dige
 }
 
 func NewAccessTokenTransport(token *atlasauth.Token, base http.RoundTripper, version string, saveToken func(*atlasauth.Token) error) (http.RoundTripper, error) {
+	if token == nil {
+		return nil, errors.New("token is nil")
+	}
+
 	client := http.DefaultClient
 	client.Transport = Default()
 

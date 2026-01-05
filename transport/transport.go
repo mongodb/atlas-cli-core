@@ -56,7 +56,6 @@ func newTransport(timeout time.Duration) *http.Transport {
 			Timeout:   timeout,
 			KeepAlive: keepAlive,
 		}).DialContext,
-		TLSHandshakeTimeout:   timeout,
 		ResponseHeaderTimeout: timeout,
 		MaxIdleConns:          maxIdleConns,
 		MaxIdleConnsPerHost:   maxIdleConnsPerHost,

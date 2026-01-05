@@ -91,7 +91,6 @@ func TestDefaultTransport(t *testing.T) {
 	transport := Default()
 	require.NotNil(t, transport)
 
-	assert.Equal(t, timeout, transport.TLSHandshakeTimeout, "TLSHandshakeTimeout should match timeout constant")
 	assert.Equal(t, timeout, transport.ResponseHeaderTimeout, "ResponseHeaderTimeout should match timeout constant")
 	assert.Equal(t, maxIdleConns, transport.MaxIdleConns)
 	assert.Equal(t, maxIdleConnsPerHost, transport.MaxIdleConnsPerHost)
@@ -103,7 +102,6 @@ func TestTelemetryTransport(t *testing.T) {
 	transport := Telemetry()
 	require.NotNil(t, transport)
 
-	assert.Equal(t, telemetryTimeout, transport.TLSHandshakeTimeout, "TLSHandshakeTimeout should match telemetryTimeout constant")
 	assert.Equal(t, telemetryTimeout, transport.ResponseHeaderTimeout, "ResponseHeaderTimeout should match telemetryTimeout constant")
 	assert.Equal(t, maxIdleConns, transport.MaxIdleConns)
 	assert.Equal(t, maxIdleConnsPerHost, transport.MaxIdleConnsPerHost)
@@ -135,7 +133,6 @@ func TestNewTransport(t *testing.T) {
 			transport := newTransport(tt.timeout)
 			require.NotNil(t, transport)
 
-			assert.Equal(t, tt.timeout, transport.TLSHandshakeTimeout, "TLSHandshakeTimeout should match provided timeout")
 			assert.Equal(t, tt.timeout, transport.ResponseHeaderTimeout, "ResponseHeaderTimeout should match provided timeout")
 			assert.NotNil(t, transport.DialContext, "DialContext should be set")
 		})

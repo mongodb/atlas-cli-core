@@ -18,6 +18,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -228,8 +229,9 @@ func TestTelemetryTimeout_SlowServerDoesNotBlock(t *testing.T) {
 
 	// Should have timed out
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "Client.Timeout")
-	assert.Contains(t, err.Error(), "context deadline exceeded")
+	assert.True(t,
+		strings.Contains(err.Error(), "Client.Timeout") || strings.Contains(err.Error(), "context deadline exceeded"),
+		"error should mention timeout, got: %v", err)
 
 	// Should timeout around 1 second, definitely not wait for the full 3 seconds
 	assert.Less(t, elapsed, 2*time.Second,

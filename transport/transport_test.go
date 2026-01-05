@@ -15,8 +15,10 @@
 package transport
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -138,4 +140,101 @@ func TestNewTransport(t *testing.T) {
 			assert.NotNil(t, transport.DialContext, "DialContext should be set")
 		})
 	}
+}
+
+func TestRequestTimeout_TimesOut(t *testing.T) {
+	// Create a server that delays sending response headers longer than the timeout
+	slowServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		// Sleep longer than our context timeout
+		time.Sleep(500 * time.Millisecond)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer slowServer.Close()
+
+	transport := newTransport(timeout)
+
+	client := &http.Client{
+		Transport: transport,
+	}
+
+	// Use context with short timeout to simulate request timeout
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, slowServer.URL, nil)
+	require.NoError(t, err)
+
+	start := time.Now()
+	_, err = client.Do(req)
+	elapsed := time.Since(start)
+
+	// Should have timed out
+	require.Error(t, err)
+	assert.True(t, strings.Contains(err.Error(), "context deadline exceeded"),
+		"expected context deadline exceeded error, got: %v", err)
+
+	// Should have timed out close to our context timeout, not waited for full server delay
+	assert.Less(t, elapsed, 300*time.Millisecond,
+		"request should have timed out around 100ms, but took %v", elapsed)
+}
+
+func TestResponseHeaderTimeout_SucceedsWithinTimeout(t *testing.T) {
+	// Create a server that responds quickly
+	fastServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("ok"))
+	}))
+	defer fastServer.Close()
+
+	// Create transport with a reasonable timeout
+	transport := newTransport(1 * time.Second)
+
+	client := &http.Client{
+		Transport: transport,
+	}
+
+	req, err := http.NewRequest(http.MethodGet, fastServer.URL, nil)
+	require.NoError(t, err)
+
+	resp, err := client.Do(req)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+}
+
+func TestTelemetryTimeout_SlowServerDoesNotBlock(t *testing.T) {
+	// Simulate a server that takes way too long (like the telemetry issue)
+	verySlowServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		// Simulate a 3 second delay (longer than telemetry timeout)
+		time.Sleep(3 * time.Second)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer verySlowServer.Close()
+
+	transport := newTransport(telemetryTimeout)
+
+	// Use http.Client.Timeout for overall request timeout (this is what should be used in production)
+	client := &http.Client{
+		Transport: transport,
+		Timeout:   telemetryTimeout,
+	}
+
+	req, err := http.NewRequest(http.MethodGet, verySlowServer.URL, nil)
+	require.NoError(t, err)
+
+	start := time.Now()
+	_, err = client.Do(req)
+	elapsed := time.Since(start)
+
+	// Should have timed out
+	require.Error(t, err)
+	assert.True(t, strings.Contains(err.Error(), "Client.Timeout") || strings.Contains(err.Error(), "context deadline exceeded"),
+		"expected timeout error, got: %v", err)
+
+	// Should timeout around 1 second, definitely not wait for the full 3 seconds
+	assert.Less(t, elapsed, 2*time.Second,
+		"telemetry request should timeout around 1s, but took %v", elapsed)
+	assert.GreaterOrEqual(t, elapsed, 900*time.Millisecond,
+		"request should have waited close to the timeout before giving up")
 }

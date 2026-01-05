@@ -18,7 +18,6 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"testing"
 	"time"
 
@@ -158,7 +157,7 @@ func TestRequestTimeout_TimesOut(t *testing.T) {
 	}
 
 	// Use context with short timeout to simulate request timeout
-	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	ctx, cancel := context.WithTimeout(t.Context(), 100*time.Millisecond)
 	defer cancel()
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, slowServer.URL, nil)
@@ -170,7 +169,7 @@ func TestRequestTimeout_TimesOut(t *testing.T) {
 
 	// Should have timed out
 	require.Error(t, err)
-	assert.True(t, strings.Contains(err.Error(), "context deadline exceeded"),
+	assert.Contains(t, err.Error(), "context deadline exceeded",
 		"expected context deadline exceeded error, got: %v", err)
 
 	// Should have timed out close to our context timeout, not waited for full server delay
@@ -193,7 +192,7 @@ func TestResponseHeaderTimeout_SucceedsWithinTimeout(t *testing.T) {
 		Transport: transport,
 	}
 
-	req, err := http.NewRequest(http.MethodGet, fastServer.URL, nil)
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, fastServer.URL, nil)
 	require.NoError(t, err)
 
 	resp, err := client.Do(req)
@@ -220,7 +219,7 @@ func TestTelemetryTimeout_SlowServerDoesNotBlock(t *testing.T) {
 		Timeout:   telemetryTimeout,
 	}
 
-	req, err := http.NewRequest(http.MethodGet, verySlowServer.URL, nil)
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, verySlowServer.URL, nil)
 	require.NoError(t, err)
 
 	start := time.Now()
@@ -229,8 +228,8 @@ func TestTelemetryTimeout_SlowServerDoesNotBlock(t *testing.T) {
 
 	// Should have timed out
 	require.Error(t, err)
-	assert.True(t, strings.Contains(err.Error(), "Client.Timeout") || strings.Contains(err.Error(), "context deadline exceeded"),
-		"expected timeout error, got: %v", err)
+	assert.Contains(t, err.Error(), "Client.Timeout")
+	assert.Contains(t, err.Error(), "context deadline exceeded")
 
 	// Should timeout around 1 second, definitely not wait for the full 3 seconds
 	assert.Less(t, elapsed, 2*time.Second,

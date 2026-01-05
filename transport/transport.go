@@ -72,6 +72,7 @@ func newTelemetryTransport() *http.Transport {
 			Timeout:   telemetryTimeout,
 			KeepAlive: keepAlive,
 		}).DialContext,
+		TLSHandshakeTimeout:   telemetryTimeout,
 		ResponseHeaderTimeout: telemetryTimeout,
 		MaxIdleConns:          maxIdleConns,
 		MaxIdleConnsPerHost:   maxIdleConnsPerHost,

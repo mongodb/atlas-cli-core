@@ -91,7 +91,7 @@ func TestDefaultTransport(t *testing.T) {
 	transport := Default()
 	require.NotNil(t, transport)
 
-	// Default transport should NOT have strict ResponseHeaderTimeout (allows longer API calls)
+	assert.Zero(t, transport.TLSHandshakeTimeout, "TLSHandshakeTimeout should not be set for default transport")
 	assert.Zero(t, transport.ResponseHeaderTimeout, "ResponseHeaderTimeout should not be set for default transport")
 	assert.Equal(t, maxIdleConns, transport.MaxIdleConns)
 	assert.Equal(t, maxIdleConnsPerHost, transport.MaxIdleConnsPerHost)
@@ -103,7 +103,7 @@ func TestTelemetryTransport(t *testing.T) {
 	transport := Telemetry()
 	require.NotNil(t, transport)
 
-	// Telemetry transport should have strict ResponseHeaderTimeout to avoid blocking CLI
+	assert.Equal(t, telemetryTimeout, transport.TLSHandshakeTimeout, "TLSHandshakeTimeout should match telemetryTimeout constant")
 	assert.Equal(t, telemetryTimeout, transport.ResponseHeaderTimeout, "ResponseHeaderTimeout should match telemetryTimeout constant")
 	assert.Equal(t, maxIdleConns, transport.MaxIdleConns)
 	assert.Equal(t, maxIdleConnsPerHost, transport.MaxIdleConnsPerHost)
@@ -116,6 +116,7 @@ func TestNewTransport(t *testing.T) {
 	require.NotNil(t, transport)
 
 	// newTransport creates the default transport without strict timeouts
+	assert.Zero(t, transport.TLSHandshakeTimeout, "TLSHandshakeTimeout should not be set")
 	assert.Zero(t, transport.ResponseHeaderTimeout, "ResponseHeaderTimeout should not be set")
 	assert.NotNil(t, transport.DialContext, "DialContext should be set")
 }
@@ -125,6 +126,7 @@ func TestNewTelemetryTransport(t *testing.T) {
 	require.NotNil(t, transport)
 
 	// newTelemetryTransport creates transport with strict timeouts
+	assert.Equal(t, telemetryTimeout, transport.TLSHandshakeTimeout, "TLSHandshakeTimeout should match telemetryTimeout")
 	assert.Equal(t, telemetryTimeout, transport.ResponseHeaderTimeout, "ResponseHeaderTimeout should match telemetryTimeout")
 	assert.NotNil(t, transport.DialContext, "DialContext should be set")
 }

@@ -91,7 +91,8 @@ func TestDefaultTransport(t *testing.T) {
 	transport := Default()
 	require.NotNil(t, transport)
 
-	assert.Equal(t, timeout, transport.ResponseHeaderTimeout, "ResponseHeaderTimeout should match timeout constant")
+	// Default transport should NOT have strict ResponseHeaderTimeout (allows longer API calls)
+	assert.Zero(t, transport.ResponseHeaderTimeout, "ResponseHeaderTimeout should not be set for default transport")
 	assert.Equal(t, maxIdleConns, transport.MaxIdleConns)
 	assert.Equal(t, maxIdleConnsPerHost, transport.MaxIdleConnsPerHost)
 	assert.Equal(t, idleConnTimeout, transport.IdleConnTimeout)
@@ -102,6 +103,7 @@ func TestTelemetryTransport(t *testing.T) {
 	transport := Telemetry()
 	require.NotNil(t, transport)
 
+	// Telemetry transport should have strict ResponseHeaderTimeout to avoid blocking CLI
 	assert.Equal(t, telemetryTimeout, transport.ResponseHeaderTimeout, "ResponseHeaderTimeout should match telemetryTimeout constant")
 	assert.Equal(t, maxIdleConns, transport.MaxIdleConns)
 	assert.Equal(t, maxIdleConnsPerHost, transport.MaxIdleConnsPerHost)
@@ -110,33 +112,21 @@ func TestTelemetryTransport(t *testing.T) {
 }
 
 func TestNewTransport(t *testing.T) {
-	tests := []struct {
-		name    string
-		timeout time.Duration
-	}{
-		{
-			name:    "with 1 second timeout",
-			timeout: 1 * time.Second,
-		},
-		{
-			name:    "with 5 second timeout",
-			timeout: 5 * time.Second,
-		},
-		{
-			name:    "with 100 millisecond timeout",
-			timeout: 100 * time.Millisecond,
-		},
-	}
+	transport := newTransport()
+	require.NotNil(t, transport)
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			transport := newTransport(tt.timeout)
-			require.NotNil(t, transport)
+	// newTransport creates the default transport without strict timeouts
+	assert.Zero(t, transport.ResponseHeaderTimeout, "ResponseHeaderTimeout should not be set")
+	assert.NotNil(t, transport.DialContext, "DialContext should be set")
+}
 
-			assert.Equal(t, tt.timeout, transport.ResponseHeaderTimeout, "ResponseHeaderTimeout should match provided timeout")
-			assert.NotNil(t, transport.DialContext, "DialContext should be set")
-		})
-	}
+func TestNewTelemetryTransport(t *testing.T) {
+	transport := newTelemetryTransport()
+	require.NotNil(t, transport)
+
+	// newTelemetryTransport creates transport with strict timeouts
+	assert.Equal(t, telemetryTimeout, transport.ResponseHeaderTimeout, "ResponseHeaderTimeout should match telemetryTimeout")
+	assert.NotNil(t, transport.DialContext, "DialContext should be set")
 }
 
 func TestRequestTimeout_TimesOut(t *testing.T) {
@@ -148,7 +138,7 @@ func TestRequestTimeout_TimesOut(t *testing.T) {
 	}))
 	defer slowServer.Close()
 
-	transport := newTransport(timeout)
+	transport := newTransport()
 
 	client := &http.Client{
 		Transport: transport,
@@ -183,8 +173,8 @@ func TestResponseHeaderTimeout_SucceedsWithinTimeout(t *testing.T) {
 	}))
 	defer fastServer.Close()
 
-	// Create transport with a reasonable timeout
-	transport := newTransport(1 * time.Second)
+	// Use telemetry transport (has strict timeouts)
+	transport := newTelemetryTransport()
 
 	client := &http.Client{
 		Transport: transport,
@@ -209,7 +199,8 @@ func TestTelemetryTimeout_SlowServerDoesNotBlock(t *testing.T) {
 	}))
 	defer verySlowServer.Close()
 
-	transport := newTransport(telemetryTimeout)
+	// Use the telemetry transport with strict timeouts
+	transport := newTelemetryTransport()
 
 	// Use http.Client.Timeout for overall request timeout (this is what should be used in production)
 	client := &http.Client{

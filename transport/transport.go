@@ -38,25 +38,41 @@ const (
 	expectContinueTimeout = 1 * time.Second
 )
 
-var defaultTransport = newTransport(timeout)
+var defaultTransport = newTransport()
 
 func Default() *http.Transport {
 	return defaultTransport
 }
 
-var telemetryTransport = newTransport(telemetryTimeout)
+var telemetryTransport = newTelemetryTransport()
 
 func Telemetry() *http.Transport {
 	return telemetryTransport
 }
 
-func newTransport(timeout time.Duration) *http.Transport {
+func newTransport() *http.Transport {
 	return &http.Transport{
 		DialContext: (&net.Dialer{
 			Timeout:   timeout,
 			KeepAlive: keepAlive,
 		}).DialContext,
-		ResponseHeaderTimeout: timeout,
+		MaxIdleConns:          maxIdleConns,
+		MaxIdleConnsPerHost:   maxIdleConnsPerHost,
+		Proxy:                 http.ProxyFromEnvironment,
+		IdleConnTimeout:       idleConnTimeout,
+		ExpectContinueTimeout: expectContinueTimeout,
+	}
+}
+
+// newTelemetryTransport creates a transport with strict timeouts for telemetry.
+// Telemetry should be fire-and-forget and not block the CLI.
+func newTelemetryTransport() *http.Transport {
+	return &http.Transport{
+		DialContext: (&net.Dialer{
+			Timeout:   telemetryTimeout,
+			KeepAlive: keepAlive,
+		}).DialContext,
+		ResponseHeaderTimeout: telemetryTimeout,
 		MaxIdleConns:          maxIdleConns,
 		MaxIdleConnsPerHost:   maxIdleConnsPerHost,
 		Proxy:                 http.ProxyFromEnvironment,

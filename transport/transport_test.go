@@ -18,8 +18,10 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/mongodb/atlas-cli-core/config"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.mongodb.org/atlas/auth"
 )
@@ -81,4 +83,59 @@ func TestNewServiceAccountTransport(t *testing.T) {
 	resp, err := client.Transport.RoundTrip(req)
 	require.NoError(t, err)
 	require.NotNil(t, resp)
+}
+
+func TestDefaultTransport(t *testing.T) {
+	transport := Default()
+	require.NotNil(t, transport)
+
+	assert.Equal(t, timeout, transport.TLSHandshakeTimeout, "TLSHandshakeTimeout should match timeout constant")
+	assert.Equal(t, timeout, transport.ResponseHeaderTimeout, "ResponseHeaderTimeout should match timeout constant")
+	assert.Equal(t, maxIdleConns, transport.MaxIdleConns)
+	assert.Equal(t, maxIdleConnsPerHost, transport.MaxIdleConnsPerHost)
+	assert.Equal(t, idleConnTimeout, transport.IdleConnTimeout)
+	assert.Equal(t, expectContinueTimeout, transport.ExpectContinueTimeout)
+}
+
+func TestTelemetryTransport(t *testing.T) {
+	transport := Telemetry()
+	require.NotNil(t, transport)
+
+	assert.Equal(t, telemetryTimeout, transport.TLSHandshakeTimeout, "TLSHandshakeTimeout should match telemetryTimeout constant")
+	assert.Equal(t, telemetryTimeout, transport.ResponseHeaderTimeout, "ResponseHeaderTimeout should match telemetryTimeout constant")
+	assert.Equal(t, maxIdleConns, transport.MaxIdleConns)
+	assert.Equal(t, maxIdleConnsPerHost, transport.MaxIdleConnsPerHost)
+	assert.Equal(t, idleConnTimeout, transport.IdleConnTimeout)
+	assert.Equal(t, expectContinueTimeout, transport.ExpectContinueTimeout)
+}
+
+func TestNewTransport(t *testing.T) {
+	tests := []struct {
+		name    string
+		timeout time.Duration
+	}{
+		{
+			name:    "with 1 second timeout",
+			timeout: 1 * time.Second,
+		},
+		{
+			name:    "with 5 second timeout",
+			timeout: 5 * time.Second,
+		},
+		{
+			name:    "with 100 millisecond timeout",
+			timeout: 100 * time.Millisecond,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			transport := newTransport(tt.timeout)
+			require.NotNil(t, transport)
+
+			assert.Equal(t, tt.timeout, transport.TLSHandshakeTimeout, "TLSHandshakeTimeout should match provided timeout")
+			assert.Equal(t, tt.timeout, transport.ResponseHeaderTimeout, "ResponseHeaderTimeout should match provided timeout")
+			assert.NotNil(t, transport.DialContext, "DialContext should be set")
+		})
+	}
 }

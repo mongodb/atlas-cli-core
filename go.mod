@@ -3,7 +3,7 @@ module github.com/mongodb/atlas-cli-core
 go 1.24.2
 
 require (
-	github.com/golang-jwt/jwt/v5 v5.3.0
+	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/mongodb-forks/digest v1.1.0
 	github.com/pelletier/go-toml v1.9.5
 	github.com/spf13/afero v1.15.0

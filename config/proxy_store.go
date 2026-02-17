@@ -38,9 +38,15 @@ var SecureProperties = []string{
 }
 
 // ProxyStore routes properties between secure and insecure stores based on property type.
+// It implements a three-layer priority system for secure properties:
+// 1. Environment variables (highest priority)
+// 2. Secure store (keyring)
+// 3. Config file (lowest priority)
+// Both environment and secure are nil when not available.
 type ProxyStore struct {
-	insecure Store
-	secure   SecureStore
+	environment Store       // Viper with no filesystem, only environment variables; nil if not loaded
+	insecure    Store       // Viper with filesystem, no environment variables
+	secure      SecureStore // System keyring; nil if not available
 }
 
 // NewDefaultStore creates a store with default filesystem and secure storage if available.
@@ -51,27 +57,43 @@ func NewDefaultStore() (Store, error) {
 // NewStoreWithEnvOption creates a store with default filesystem and secure storage
 // if available. It will load environment variables according to the loadEnvVars input.
 func NewStoreWithEnvOption(loadEnvVars bool) (Store, error) {
-	insecure, err := NewViperStore(afero.NewOsFs(), loadEnvVars)
-
+	// Create file-based store (no env vars)
+	insecureStore, err := NewViperStore(afero.NewOsFs(), false)
 	if err != nil {
 		return nil, err
 	}
 
-	profileNames := insecure.GetProfileNames()
+	var environmentStore Store
+	if loadEnvVars {
+		// Create environment-only store (in-memory filesystem, no config file)
+		environmentStore, err = NewViperStore(afero.NewMemMapFs(), true)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	profileNames := insecureStore.GetProfileNames()
 	secureStore := secure.NewSecureStore(profileNames, SecureProperties)
 
-	return NewStore(insecure, secureStore), nil
+	return NewStore(environmentStore, insecureStore, secureStore), nil
 }
 
-// NewStore creates a ProxyStore if secure storage is available, otherwise returns insecure store.
-func NewStore(insecureStore Store, secureStore SecureStore) Store {
-	if !secureStore.Available() {
-		return insecureStore
+// NewStore creates a ProxyStore if we have environment or secure storage,
+// otherwise returns insecure store directly.
+func NewStore(environment Store, insecure Store, secureStore SecureStore) Store {
+	var secure SecureStore
+	if secureStore != nil && secureStore.Available() {
+		secure = secureStore
+	}
+
+	if environment == nil && secure == nil {
+		return insecure
 	}
 
 	return &ProxyStore{
-		insecure: insecureStore,
-		secure:   secureStore,
+		environment: environment,
+		insecure:    insecure,
+		secure:      secure,
 	}
 }
 
@@ -82,12 +104,13 @@ func isSecureProperty(propertyName string) bool {
 
 // Store interface implementation for ProxyStore
 
-// IsSecure returns true as ProxyStore provides secure storage capabilities.
-func (*ProxyStore) IsSecure() bool {
-	return true
+// IsSecure returns true if the secure store (keyring) is available.
+func (p *ProxyStore) IsSecure() bool {
+	return p.secure != nil
 }
 
 // Save persists both secure and insecure stores, collecting any errors.
+// Environment store is not persisted as it's read-only.
 func (p *ProxyStore) Save() error {
 	errs := []error{}
 
@@ -95,8 +118,10 @@ func (p *ProxyStore) Save() error {
 		errs = append(errs, err)
 	}
 
-	if err := p.secure.Save(); err != nil {
-		errs = append(errs, err)
+	if p.secure != nil {
+		if err := p.secure.Save(); err != nil {
+			errs = append(errs, err)
+		}
 	}
 
 	return errors.Join(errs...)
@@ -117,23 +142,34 @@ func (p *ProxyStore) DeleteProfile(profileName string) error {
 	return p.insecure.DeleteProfile(profileName)
 }
 
-// GetHierarchicalValue routes to secure or insecure store based on property type.
-// For secure properties, it first checks the insecure store for a value, in the
-// case that environment variables are used. If no value is found, it will proceed
-// with secure store.
+// GetHierarchicalValue implements three-layer priority for secure properties:
+// 1. Environment variables (highest priority)
+// 2. Secure store (keyring)
+// 3. Config file (lowest priority)
+// For non-secure properties, checks env vars first, then config file.
 func (p *ProxyStore) GetHierarchicalValue(profileName string, propertyName string) any {
-	val := p.insecure.GetHierarchicalValue(profileName, propertyName)
-
-	if isSecureProperty(propertyName) && val == nil {
-		return p.secure.Get(profileName, propertyName)
+	// Layer 1: Check environment variables first (if environment store is available)
+	if p.environment != nil {
+		if envVal := p.environment.GetHierarchicalValue(profileName, propertyName); envVal != nil && envVal != "" {
+			return envVal
+		}
 	}
 
-	return val
+	// For secure properties, check secure store before insecure store
+	if isSecureProperty(propertyName) && p.secure != nil {
+		// Layer 2: Check secure store (keyring)
+		if secureVal := p.secure.Get(profileName, propertyName); secureVal != "" {
+			return secureVal
+		}
+	}
+
+	// Layer 3: Fall back to insecure config file
+	return p.insecure.GetHierarchicalValue(profileName, propertyName)
 }
 
 // SetProfileValue routes to secure or insecure store based on property type.
 func (p *ProxyStore) SetProfileValue(profileName string, propertyName string, value any) {
-	if isSecureProperty(propertyName) {
+	if isSecureProperty(propertyName) && p.secure != nil {
 		if v, ok := value.(string); ok {
 			p.secure.Set(profileName, propertyName, v)
 		}
@@ -144,7 +180,7 @@ func (p *ProxyStore) SetProfileValue(profileName string, propertyName string, va
 
 // GetProfileValue routes to secure or insecure store based on property type.
 func (p *ProxyStore) GetProfileValue(profileName string, propertyName string) any {
-	if isSecureProperty(propertyName) {
+	if isSecureProperty(propertyName) && p.secure != nil {
 		return p.secure.Get(profileName, propertyName)
 	}
 	return p.insecure.GetProfileValue(profileName, propertyName)
@@ -157,7 +193,7 @@ func (p *ProxyStore) GetProfileStringMap(profileName string) map[string]string {
 
 // SetGlobalValue routes to secure or insecure store based on property type.
 func (p *ProxyStore) SetGlobalValue(propertyName string, value any) {
-	if isSecureProperty(propertyName) {
+	if isSecureProperty(propertyName) && p.secure != nil {
 		if v, ok := value.(string); ok {
 			p.secure.Set(DefaultProfile, propertyName, v)
 		}
@@ -166,16 +202,34 @@ func (p *ProxyStore) SetGlobalValue(propertyName string, value any) {
 	p.insecure.SetGlobalValue(propertyName, value)
 }
 
-// GetGlobalValue routes to secure or insecure store based on property type.
+// GetGlobalValue implements three-layer priority for secure properties:
+// 1. Environment variables (highest priority)
+// 2. Secure store (keyring)
+// 3. Config file (lowest priority)
 func (p *ProxyStore) GetGlobalValue(propertyName string) any {
-	if isSecureProperty(propertyName) {
-		return p.secure.Get(DefaultProfile, propertyName)
+	// Layer 1: Check environment variables first (if environment store is available)
+	if p.environment != nil {
+		if envVal := p.environment.GetGlobalValue(propertyName); envVal != nil && envVal != "" {
+			return envVal
+		}
 	}
+
+	// For secure properties, check secure store before insecure store
+	if isSecureProperty(propertyName) && p.secure != nil {
+		// Layer 2: Check secure store (keyring)
+		if secureVal := p.secure.Get(DefaultProfile, propertyName); secureVal != "" {
+			return secureVal
+		}
+	}
+
+	// Layer 3: Fall back to insecure config file
 	return p.insecure.GetGlobalValue(propertyName)
 }
 
-// IsSetGlobal checks only insecure store for global property existence as
-// no secure properties are global
+// IsSetGlobal checks if a global property is set in any store.
 func (p *ProxyStore) IsSetGlobal(propertyName string) bool {
+	if p.environment != nil && p.environment.IsSetGlobal(propertyName) {
+		return true
+	}
 	return p.insecure.IsSetGlobal(propertyName)
 }

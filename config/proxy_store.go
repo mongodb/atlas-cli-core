@@ -81,19 +81,19 @@ func NewStoreWithEnvOption(loadEnvVars bool) (Store, error) {
 // NewStore creates a ProxyStore if we have environment or secure storage,
 // otherwise returns insecure store directly.
 func NewStore(environment Store, insecure Store, secureStore SecureStore) Store {
-	var secure SecureStore
+	var secStore SecureStore
 	if secureStore != nil && secureStore.Available() {
-		secure = secureStore
+		secStore = secureStore
 	}
 
-	if environment == nil && secure == nil {
+	if environment == nil && secStore == nil {
 		return insecure
 	}
 
 	return &ProxyStore{
 		environment: environment,
 		insecure:    insecure,
-		secure:      secure,
+		secure:      secStore,
 	}
 }
 

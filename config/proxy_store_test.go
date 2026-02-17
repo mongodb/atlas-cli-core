@@ -26,6 +26,7 @@ import (
 const (
 	testProfileName = "test-profile"
 	testValue       = "test-value"
+	envVarTestValue = "env-var-value"
 )
 
 func TestNewStore(t *testing.T) {
@@ -319,15 +320,14 @@ func TestGetHierarchicalValue_EnvVarPriority(t *testing.T) {
 	}
 
 	profileName := "test"
-	envVarValue := "env-var-value"
 
 	// Test that env var value is returned (no secure or insecure store calls)
 	environment.EXPECT().
 		GetHierarchicalValue(profileName, ClientIDField).
-		Return(envVarValue)
+		Return(envVarTestValue)
 
 	result := store.GetHierarchicalValue(profileName, ClientIDField)
-	assert.Equal(t, envVarValue, result)
+	assert.Equal(t, envVarTestValue, result)
 
 	// Test fallback: env returns nil -> check secure store
 	keyringValue := "keyring-value"
@@ -372,13 +372,11 @@ func TestGetGlobalValue_EnvVarPriority(t *testing.T) {
 		secure:      mockSecure,
 	}
 
-	envVarValue := "env-var-value"
-
 	// Test that env var value is returned (no secure or insecure store calls)
 	environment.EXPECT().
 		GetGlobalValue(ClientIDField).
-		Return(envVarValue)
+		Return(envVarTestValue)
 
 	result := store.GetGlobalValue(ClientIDField)
-	assert.Equal(t, envVarValue, result)
+	assert.Equal(t, envVarTestValue, result)
 }

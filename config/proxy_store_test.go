@@ -26,22 +26,38 @@ import (
 const (
 	testProfileName = "test-profile"
 	testValue       = "test-value"
+	envVarTestValue = "env-var-value"
 )
 
 func TestNewStore(t *testing.T) {
 	tests := []struct {
 		name             string
 		secureAvailable  bool
+		hasEnvironment   bool
 		expectProxyStore bool
 	}{
 		{
-			name:             "secure store available - returns ProxyStore",
+			name:             "secure store available with env - returns ProxyStore",
 			secureAvailable:  true,
+			hasEnvironment:   true,
 			expectProxyStore: true,
 		},
 		{
-			name:             "secure store unavailable - returns insecure store",
+			name:             "secure store available without env - returns ProxyStore",
+			secureAvailable:  true,
+			hasEnvironment:   false,
+			expectProxyStore: true,
+		},
+		{
+			name:             "secure store unavailable with env - returns ProxyStore",
 			secureAvailable:  false,
+			hasEnvironment:   true,
+			expectProxyStore: true,
+		},
+		{
+			name:             "secure store unavailable without env - returns insecure store",
+			secureAvailable:  false,
+			hasEnvironment:   false,
 			expectProxyStore: false,
 		},
 	}
@@ -50,20 +66,29 @@ func TestNewStore(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			ctrl := gomock.NewController(t)
 
-			mockInsecure := mocks.NewMockStore(ctrl)
+			var environment Store
+			if tt.hasEnvironment {
+				environment = mocks.NewMockStore(ctrl)
+			}
+			insecure := mocks.NewMockStore(ctrl)
 			mockSecure := mocks.NewMockSecureStore(ctrl)
 
-			mockSecure.EXPECT().Available().Return(tt.secureAvailable)
+			mockSecure.EXPECT().Available().Return(tt.secureAvailable).AnyTimes()
 
-			store := NewStore(mockInsecure, mockSecure)
+			store := NewStore(environment, insecure, mockSecure)
 
 			if tt.expectProxyStore {
 				proxyStore, ok := store.(*ProxyStore)
 				require.True(t, ok, "Expected ProxyStore")
-				assert.Equal(t, mockInsecure, proxyStore.insecure)
-				assert.Equal(t, mockSecure, proxyStore.secure)
+				assert.Equal(t, environment, proxyStore.environment)
+				assert.Equal(t, insecure, proxyStore.insecure)
+				if tt.secureAvailable {
+					assert.Equal(t, mockSecure, proxyStore.secure)
+				} else {
+					assert.Nil(t, proxyStore.secure)
+				}
 			} else {
-				assert.Equal(t, mockInsecure, store)
+				assert.Equal(t, insecure, store)
 			}
 		})
 	}
@@ -72,12 +97,13 @@ func TestNewStore(t *testing.T) {
 func TestProxyStore_IsSecure(t *testing.T) {
 	ctrl := gomock.NewController(t)
 
-	mockInsecure := mocks.NewMockStore(ctrl)
+	environment := mocks.NewMockStore(ctrl)
+	insecure := mocks.NewMockStore(ctrl)
 	mockSecure := mocks.NewMockSecureStore(ctrl)
-
 	store := &ProxyStore{
-		insecure: mockInsecure,
-		secure:   mockSecure,
+		environment: environment,
+		insecure:    insecure,
+		secure:      mockSecure,
 	}
 
 	assert.True(t, store.IsSecure())
@@ -130,12 +156,14 @@ func TestProxyStore_PropertyRouting(t *testing.T) {
 			t.Run(method.name+"_"+tc.propertyName, func(t *testing.T) {
 				ctrl := gomock.NewController(t)
 
-				mockInsecure := mocks.NewMockStore(ctrl)
+				environment := mocks.NewMockStore(ctrl)
+				insecure := mocks.NewMockStore(ctrl)
 				mockSecure := mocks.NewMockSecureStore(ctrl)
 
 				store := &ProxyStore{
-					insecure: mockInsecure,
-					secure:   mockSecure,
+					environment: environment,
+					insecure:    insecure,
+					secure:      mockSecure,
 				}
 
 				method.testFunc(t, store, tc.propertyName, tc.isSecure)
@@ -150,13 +178,20 @@ func testGetHierarchicalValue(t *testing.T, store *ProxyStore, propertyName stri
 	expectedValue := testValue
 
 	if isSecure {
-		store.insecure.(*mocks.MockStore).EXPECT().
+		// Three-layer priority for secure properties:
+		// 1. Check environment variables (returns nil)
+		store.environment.(*mocks.MockStore).EXPECT().
 			GetHierarchicalValue(profileName, propertyName).
 			Return(nil)
+		// 2. Check secure store (returns value)
 		store.secure.(*mocks.MockSecureStore).EXPECT().
 			Get(profileName, propertyName).
 			Return(expectedValue)
 	} else {
+		// For non-secure: check env (returns nil), then insecure store
+		store.environment.(*mocks.MockStore).EXPECT().
+			GetHierarchicalValue(profileName, propertyName).
+			Return(nil)
 		store.insecure.(*mocks.MockStore).EXPECT().
 			GetHierarchicalValue(profileName, propertyName).
 			Return(expectedValue)
@@ -221,10 +256,20 @@ func testGetGlobalValue(t *testing.T, store *ProxyStore, propertyName string, is
 	expectedValue := testValue
 
 	if isSecure {
+		// Three-layer priority for secure properties:
+		// 1. Check environment variables (returns nil)
+		store.environment.(*mocks.MockStore).EXPECT().
+			GetGlobalValue(propertyName).
+			Return(nil)
+		// 2. Check secure store (returns value)
 		store.secure.(*mocks.MockSecureStore).EXPECT().
 			Get(DefaultProfile, propertyName).
 			Return(expectedValue)
 	} else {
+		// For non-secure: check env (returns nil), then insecure store
+		store.environment.(*mocks.MockStore).EXPECT().
+			GetGlobalValue(propertyName).
+			Return(nil)
 		store.insecure.(*mocks.MockStore).EXPECT().
 			GetGlobalValue(propertyName).
 			Return(expectedValue)
@@ -257,4 +302,81 @@ func TestIsSecureProperty(t *testing.T) {
 			assert.Equal(t, tt.expected, result)
 		})
 	}
+}
+
+// TestGetHierarchicalValue_EnvVarPriority tests that environment variables
+// take precedence over both secure store and insecure config for secure properties.
+func TestGetHierarchicalValue_EnvVarPriority(t *testing.T) {
+	ctrl := gomock.NewController(t)
+
+	environment := mocks.NewMockStore(ctrl)
+	insecure := mocks.NewMockStore(ctrl)
+	mockSecure := mocks.NewMockSecureStore(ctrl)
+
+	store := &ProxyStore{
+		environment: environment,
+		insecure:    insecure,
+		secure:      mockSecure,
+	}
+
+	profileName := "test"
+
+	// Test that env var value is returned (no secure or insecure store calls)
+	environment.EXPECT().
+		GetHierarchicalValue(profileName, ClientIDField).
+		Return(envVarTestValue)
+
+	result := store.GetHierarchicalValue(profileName, ClientIDField)
+	assert.Equal(t, envVarTestValue, result)
+
+	// Test fallback: env returns nil -> check secure store
+	keyringValue := "keyring-value"
+	environment.EXPECT().
+		GetHierarchicalValue(profileName, ClientSecretField).
+		Return(nil)
+	mockSecure.EXPECT().
+		Get(profileName, ClientSecretField).
+		Return(keyringValue)
+
+	result = store.GetHierarchicalValue(profileName, ClientSecretField)
+	assert.Equal(t, keyringValue, result)
+
+	// Test fallback: env returns nil, secure returns empty -> check insecure store
+	insecureValue := "insecure-value"
+	environment.EXPECT().
+		GetHierarchicalValue(profileName, privateAPIKey).
+		Return(nil)
+	mockSecure.EXPECT().
+		Get(profileName, privateAPIKey).
+		Return("")
+	insecure.EXPECT().
+		GetHierarchicalValue(profileName, privateAPIKey).
+		Return(insecureValue)
+
+	result = store.GetHierarchicalValue(profileName, privateAPIKey)
+	assert.Equal(t, insecureValue, result)
+}
+
+// TestGetGlobalValue_EnvVarPriority tests that environment variables
+// take precedence over both secure store and insecure config for secure properties.
+func TestGetGlobalValue_EnvVarPriority(t *testing.T) {
+	ctrl := gomock.NewController(t)
+
+	environment := mocks.NewMockStore(ctrl)
+	insecure := mocks.NewMockStore(ctrl)
+	mockSecure := mocks.NewMockSecureStore(ctrl)
+
+	store := &ProxyStore{
+		environment: environment,
+		insecure:    insecure,
+		secure:      mockSecure,
+	}
+
+	// Test that env var value is returned (no secure or insecure store calls)
+	environment.EXPECT().
+		GetGlobalValue(ClientIDField).
+		Return(envVarTestValue)
+
+	result := store.GetGlobalValue(ClientIDField)
+	assert.Equal(t, envVarTestValue, result)
 }

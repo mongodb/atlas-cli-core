@@ -91,6 +91,30 @@ func NewDigestTransport(username, password string, base http.RoundTripper) *dige
 	}
 }
 
+// NewAccessTokenTransportForAuthIssuer creates a token transport that refreshes against the
+// dedicated OAuth Authorization Server (AuthServerURL) instead of the cloud.mongodb.com proxy.
+// Used for UserDelegation sessions created by atlas auth connect.
+func NewAccessTokenTransportForAuthIssuer(token *atlasauth.Token, base http.RoundTripper, version string, saveToken func(*atlasauth.Token) error) (http.RoundTripper, error) {
+	if token == nil {
+		return nil, errors.New("token is nil")
+	}
+
+	client := http.DefaultClient
+	client.Transport = Default()
+
+	flow, err := FlowForAuthIssuer(config.Default(), client, version)
+	if err != nil {
+		return nil, err
+	}
+
+	return &tokenTransport{
+		token:      token,
+		base:       base,
+		authConfig: flow,
+		saveToken:  saveToken,
+	}, nil
+}
+
 func NewAccessTokenTransport(token *atlasauth.Token, base http.RoundTripper, version string, saveToken func(*atlasauth.Token) error) (http.RoundTripper, error) {
 	if token == nil {
 		return nil, errors.New("token is nil")

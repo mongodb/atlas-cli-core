@@ -80,6 +80,26 @@ func HTTPClientFromProfile(profile ProfileProvider, version string, httpTranspor
 				profile.SetAccessToken(t.AccessToken)
 				return profile.Save()
 			}), nil
+	case config.UserDelegation:
+		token, err := profile.Token()
+		if err != nil {
+			return nil, err
+		}
+
+		if token != nil {
+			tr, err := NewAccessTokenTransportForAuthIssuer(token, httpTransport, version, func(t *auth.Token) error {
+				profile.SetAccessToken(t.AccessToken)
+				profile.SetRefreshToken(t.RefreshToken)
+				return profile.Save()
+			})
+			if err != nil {
+				return nil, err
+			}
+			return &http.Client{Transport: tr}, nil
+		}
+
+		// No token available, fall through to unauthenticated client
+		fallthrough
 	case config.NoAuth:
 		fallthrough
 	default:

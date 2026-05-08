@@ -313,6 +313,7 @@ type AuthMechanism string
 const (
 	APIKeys        AuthMechanism = "api_keys"
 	UserAccount    AuthMechanism = "user_account"
+	UserDelegation AuthMechanism = "user_delegation"
 	ServiceAccount AuthMechanism = "service_account"
 	NoAuth         AuthMechanism = "no_auth"
 )

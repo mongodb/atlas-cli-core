@@ -16,6 +16,7 @@ package transport
 
 import (
 	"net/http"
+	"net/url"
 
 	"github.com/mongodb/atlas-cli-core/config"
 	"go.mongodb.org/atlas/auth"
@@ -24,9 +25,17 @@ import (
 const (
 	cloudGovServiceURL = "https://cloud.mongodbgov.com/"
 
-	// Client IDs
+	// Client IDs for the existing auth path (cloud.mongodb.com proxy → auth.mongodb.com)
 	ClientID    = "0oabtxactgS3gHIR0297" // ClientID for production
 	GovClientID = "0oabtyfelbTBdoucy297" // GovClientID for production
+
+	// Client IDs and gov URL for the dedicated OAuth Authorization Server.
+	// The commercial auth issuer URL comes from the auth.Config.AuthServerURL field,
+	// populated by default in auth.NewConfig from go.mongodb.org/atlas.
+	// The gov URL is a placeholder pending the gov AS deployment.
+	govDefaultAuthIssuerURL = "https://authorize.mongodbgov.com"
+	authIssuerClientID      = "0oabtxactgS3gHIR0297" // placeholder: same as production until new AS client is provisioned
+	govAuthIssuerClientID   = "0oabtyfelbTBdoucy297" // placeholder: same as gov production until new AS client is provisioned
 )
 
 type ServiceGetter interface {
@@ -34,6 +43,13 @@ type ServiceGetter interface {
 	OpsManagerURL() string
 	ClientID() string
 	AccountURL() string
+}
+
+// AuthIssuerGetter provides the minimal config needed for the dedicated OAuth AS flow.
+// Unlike ServiceGetter, it does not expose OpsManagerURL or AccountURL because the
+// auth issuer URL is compiled in, not derived from the API base URL.
+type AuthIssuerGetter interface {
+	Service() string
 }
 
 func FlowWithConfig(c ServiceGetter, client *http.Client, version string) (*auth.Config, error) {
@@ -59,4 +75,34 @@ func FlowWithConfig(c ServiceGetter, client *http.Client, version string) (*auth
 		authOpts = append(authOpts, auth.SetAuthURL(cloudGovServiceURL))
 	}
 	return auth.NewConfigWithOptions(client, authOpts...)
+}
+
+// FlowForAuthIssuer creates an auth.Config for the dedicated OAuth Authorization Server.
+// This is the parallel path for UserDelegation sessions and intentionally does not read
+// OpsManagerURL or AccountURL — the auth server URL comes from the Config's AuthServerURL
+// field, populated by default in auth.NewConfig.
+func FlowForAuthIssuer(c AuthIssuerGetter, client *http.Client, version string) (*auth.Config, error) {
+	id := authIssuerClientID
+	if c.Service() == config.CloudGovService {
+		id = govAuthIssuerClientID
+	}
+
+	cfg, err := auth.NewConfigWithOptions(client,
+		auth.SetUserAgent(config.UserAgent(version)),
+		auth.SetClientID(id),
+		auth.SetScopes([]string{"openid", "profile", "offline_access"}),
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	// For gov, override the auth server URL with the gov-specific endpoint.
+	if c.Service() == config.CloudGovService {
+		cfg.AuthServerURL, err = url.Parse(govDefaultAuthIssuerURL)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return cfg, nil
 }

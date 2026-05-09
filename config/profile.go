@@ -44,6 +44,7 @@ const (
 	privateAPIKey            = "private_api_key"
 	AccessTokenField         = "access_token"
 	RefreshTokenField        = "refresh_token"
+	TokenExpiryField         = "token_expiry"
 	ClientIDField            = "client_id"
 	ClientSecretField        = "client_secret"
 	OpsManagerURLField       = "ops_manager_url"
@@ -476,11 +477,35 @@ func (p *Profile) AccessTokenSubject() (string, error) {
 	return c.Subject, err
 }
 
+// TokenExpiry gets the stored token expiry time.
+func TokenExpiry() string { return Default().TokenExpiry() }
+func (p *Profile) TokenExpiry() string {
+	return p.GetString(TokenExpiryField)
+}
+
+// SetTokenExpiry stores the token expiry time.
+func SetTokenExpiry(v string) { Default().SetTokenExpiry(v) }
+func (p *Profile) SetTokenExpiry(v string) {
+	p.Set(TokenExpiryField, v)
+}
+
 func (p *Profile) tokenClaims() (jwt.RegisteredClaims, error) {
 	c := jwt.RegisteredClaims{}
-	// ParseUnverified is ok here, only want to make sure is a JWT and to get the claims for a Subject
-	_, _, err := new(jwt.Parser).ParseUnverified(p.AccessToken(), &c)
-	return c, err
+	// TODO: The OAuth client MUST NOT depend on the access token being a JWT.
+	// Token expiry should come from expires_in, and user identity from a
+	// userinfo endpoint or ID token — not from access token claims.
+	//
+	// We are stuffing a stored expiry timestamp back into a JWT RegisteredClaims
+	// struct solely because Token() reads ExpiresAt from it. This is backwards —
+	// the claims struct exists for JWT parsing, not for carrying stored profile
+	// values. The right fix is for Token() to read the expiry directly, but that
+	// is a larger refactor of the existing auth flow.
+	if expiry := p.TokenExpiry(); expiry != "" {
+		if t, err := time.Parse(time.RFC3339, expiry); err == nil {
+			c.ExpiresAt = jwt.NewNumericDate(t)
+		}
+	}
+	return c, nil
 }
 
 // APIVersion get the default API version.

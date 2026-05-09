@@ -45,11 +45,11 @@ type ServiceGetter interface {
 	AccountURL() string
 }
 
-// AuthIssuerGetter provides the minimal config needed for the dedicated OAuth AS flow.
-// Unlike ServiceGetter, it does not expose OpsManagerURL or AccountURL because the
-// auth issuer URL is compiled in, not derived from the API base URL.
+// AuthIssuerGetter provides the config needed for the dedicated OAuth AS flow.
 type AuthIssuerGetter interface {
 	Service() string
+	ClientID() string
+	AuthServerURL() string
 }
 
 func FlowWithConfig(c ServiceGetter, client *http.Client, version string) (*auth.Config, error) {
@@ -83,7 +83,9 @@ func FlowWithConfig(c ServiceGetter, client *http.Client, version string) (*auth
 // field, populated by default in auth.NewConfig.
 func FlowForAuthIssuer(c AuthIssuerGetter, client *http.Client, version string) (*auth.Config, error) {
 	id := authIssuerClientID
-	if c.Service() == config.CloudGovService {
+	if c.ClientID() != "" {
+		id = c.ClientID()
+	} else if c.Service() == config.CloudGovService {
 		id = govAuthIssuerClientID
 	}
 
@@ -96,8 +98,12 @@ func FlowForAuthIssuer(c AuthIssuerGetter, client *http.Client, version string) 
 		return nil, err
 	}
 
-	// For gov, override the auth server URL with the gov-specific endpoint.
-	if c.Service() == config.CloudGovService {
+	if configURL := c.AuthServerURL(); configURL != "" {
+		cfg.AuthServerURL, err = url.Parse(configURL)
+		if err != nil {
+			return nil, err
+		}
+	} else if c.Service() == config.CloudGovService {
 		cfg.AuthServerURL, err = url.Parse(govDefaultAuthIssuerURL)
 		if err != nil {
 			return nil, err

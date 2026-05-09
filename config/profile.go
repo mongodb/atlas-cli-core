@@ -47,6 +47,7 @@ const (
 	ClientIDField            = "client_id"
 	ClientSecretField        = "client_secret"
 	OpsManagerURLField       = "ops_manager_url"
+	AuthServerURLField       = "auth_server_url"
 	authServerMetadataField  = "auth_server_metadata"
 	AccountURLField          = "account_url"
 	baseURL                  = "base_url"
@@ -160,6 +161,7 @@ func ProfileProperties() []string {
 		apiVersion,
 		baseURL,
 		OpsManagerURLField,
+		AuthServerURLField,
 		orgID,
 		output,
 		privateAPIKey,
@@ -503,6 +505,18 @@ func (p *Profile) OpsManagerURL() string {
 func SetOpsManagerURL(v string) { Default().SetOpsManagerURL(v) }
 func (p *Profile) SetOpsManagerURL(v string) {
 	p.Set(OpsManagerURLField, v)
+}
+
+// AuthServerURL gets the configured auth server URL override.
+func AuthServerURL() string { return Default().AuthServerURL() }
+func (p *Profile) AuthServerURL() string {
+	return p.GetString(AuthServerURLField)
+}
+
+// SetAuthServerURL sets the configured auth server URL override.
+func SetAuthServerURL(v string) { Default().SetAuthServerURL(v) }
+func (p *Profile) SetAuthServerURL(v string) {
+	p.Set(AuthServerURLField, v)
 }
 
 // AccountURL gets the configured account base url.

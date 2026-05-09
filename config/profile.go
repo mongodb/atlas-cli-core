@@ -47,6 +47,7 @@ const (
 	ClientIDField            = "client_id"
 	ClientSecretField        = "client_secret"
 	OpsManagerURLField       = "ops_manager_url"
+	authServerMetadataField  = "auth_server_metadata"
 	AccountURLField          = "account_url"
 	baseURL                  = "base_url"
 	apiVersion               = "api_version"
@@ -508,6 +509,26 @@ func (p *Profile) SetOpsManagerURL(v string) {
 func AccountURL() string { return Default().AccountURL() }
 func (p *Profile) AccountURL() string {
 	return p.GetString(AccountURLField)
+}
+
+// AuthServerMetadata gets the cached OAuth Authorization Server metadata.
+// Returns nil if no metadata is cached.
+func AuthServerMetadata() map[string]any { return Default().AuthServerMetadata() }
+func (p *Profile) AuthServerMetadata() map[string]any {
+	value := p.Get(authServerMetadataField)
+	if value == nil {
+		return nil
+	}
+	if m, ok := value.(map[string]any); ok {
+		return m
+	}
+	return nil
+}
+
+// SetAuthServerMetadata stores the OAuth Authorization Server metadata in the profile.
+func SetAuthServerMetadata(v map[string]any) { Default().SetAuthServerMetadata(v) }
+func (p *Profile) SetAuthServerMetadata(v map[string]any) {
+	p.Set(authServerMetadataField, v)
 }
 
 // ProjectID get configured project ID.

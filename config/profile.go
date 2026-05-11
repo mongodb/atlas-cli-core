@@ -491,21 +491,23 @@ func (p *Profile) SetTokenExpiry(v string) {
 
 func (p *Profile) tokenClaims() (jwt.RegisteredClaims, error) {
 	c := jwt.RegisteredClaims{}
-	// TODO: The OAuth client MUST NOT depend on the access token being a JWT.
-	// Token expiry should come from expires_in, and user identity from a
-	// userinfo endpoint or ID token — not from access token claims.
-	//
-	// We are stuffing a stored expiry timestamp back into a JWT RegisteredClaims
-	// struct solely because Token() reads ExpiresAt from it. This is backwards —
-	// the claims struct exists for JWT parsing, not for carrying stored profile
-	// values. The right fix is for Token() to read the expiry directly, but that
-	// is a larger refactor of the existing auth flow.
-	if expiry := p.TokenExpiry(); expiry != "" {
-		if t, err := time.Parse(time.RFC3339, expiry); err == nil {
-			c.ExpiresAt = jwt.NewNumericDate(t)
+
+	if p.AuthType() == UserDelegation {
+		// UserDelegation reads expiry from the stored token_expiry field,
+		// populated from expires_in at token acquisition time. The access
+		// token is not parsed. Subject is not available in this path.
+		if expiry := p.TokenExpiry(); expiry != "" {
+			if t, err := time.Parse(time.RFC3339, expiry); err == nil {
+				c.ExpiresAt = jwt.NewNumericDate(t)
+			}
 		}
+		return c, nil
 	}
-	return c, nil
+
+	// All other auth types parse the access token as a JWT to extract claims.
+	// TODO: migrate these paths to stop depending on the access token format.
+	_, _, err := new(jwt.Parser).ParseUnverified(p.AccessToken(), &c)
+	return c, err
 }
 
 // APIVersion get the default API version.

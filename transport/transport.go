@@ -91,10 +91,11 @@ func NewDigestTransport(username, password string, base http.RoundTripper) *dige
 	}
 }
 
-// NewAccessTokenTransportForAuthIssuer creates a token transport that refreshes against the
-// dedicated OAuth Authorization Server (AuthServerURL) instead of the cloud.mongodb.com proxy.
-// Used for UserDelegation sessions created by atlas auth connect.
-func NewAccessTokenTransportForAuthIssuer(token *atlasauth.Token, base http.RoundTripper, version string, saveToken func(*atlasauth.Token) error) (http.RoundTripper, error) {
+// NewAccessTokenTransportForAuthIssuer creates a self-contained transport for
+// UserDelegation sessions. It manages its own token lifecycle using the
+// discovered OAuth Authorization Server metadata, following the same pattern
+// as NewServiceAccountClientWithHost.
+func NewAccessTokenTransportForAuthIssuer(token *atlasauth.Token, base http.RoundTripper, version string, metadata map[string]any, saveToken func(*atlasauth.Token) error) (http.RoundTripper, error) {
 	if token == nil {
 		return nil, errors.New("token is nil")
 	}
@@ -107,12 +108,52 @@ func NewAccessTokenTransportForAuthIssuer(token *atlasauth.Token, base http.Roun
 		return nil, err
 	}
 
-	return &tokenTransport{
+	return &authServerTransport{
 		token:      token,
-		base:       base,
 		authConfig: flow,
+		metadata:   metadata,
+		base:       base,
 		saveToken:  saveToken,
 	}, nil
+}
+
+type authServerTransport struct {
+	token      *atlasauth.Token
+	authConfig *atlasauth.Config
+	metadata   map[string]any
+	base       http.RoundTripper
+	saveToken  func(*atlasauth.Token) error
+}
+
+func (tr *authServerTransport) tokenEndpoint() string {
+	if m, ok := tr.metadata["metadata"].(map[string]any); ok {
+		if ep, ok := m["token_endpoint"].(string); ok {
+			return ep
+		}
+	}
+	return ""
+}
+
+func (tr *authServerTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	if !tr.token.Valid() {
+		tokenEndpoint := tr.tokenEndpoint()
+		if tokenEndpoint == "" {
+			return nil, errors.New("token_endpoint not found in auth server metadata")
+		}
+
+		token, err := tr.authConfig.RefreshAccessToken(req.Context(), tokenEndpoint, tr.token.RefreshToken)
+		if err != nil {
+			return nil, err
+		}
+		tr.token = token
+		if err := tr.saveToken(tr.token); err != nil {
+			return nil, err
+		}
+	}
+
+	tr.token.SetAuthHeader(req)
+
+	return tr.base.RoundTrip(req)
 }
 
 func NewAccessTokenTransport(token *atlasauth.Token, base http.RoundTripper, version string, saveToken func(*atlasauth.Token) error) (http.RoundTripper, error) {

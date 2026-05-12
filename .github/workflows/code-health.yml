@@ -54,7 +54,7 @@ jobs:
       - run: make unit-test
       - name: Test Summary
         id: test_summary
-        uses: test-summary/action@31493c76ec9e7aa675f1585d3ed6f1da69269a86
+        uses: test-summary/action@37b508cfee6d4d080eedd00b5bb240a6a784a6a5
         with:
           paths: unit-tests.xml
         if: always() && matrix.os == 'ubuntu-latest'
@@ -97,7 +97,7 @@ jobs:
         run: make e2e-test
       - name: Test Summary
         id: test_summary
-        uses: test-summary/action@31493c76ec9e7aa675f1585d3ed6f1da69269a86
+        uses: test-summary/action@37b508cfee6d4d080eedd00b5bb240a6a784a6a5
         with:
           paths: e2e-tests.xml
         if: always() && matrix.os == 'ubuntu-latest'

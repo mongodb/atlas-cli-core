@@ -41,6 +41,20 @@ func (m *MockProfileProvider) EXPECT() *MockProfileProviderMockRecorder {
 	return m.recorder
 }
 
+// AuthServerMetadata mocks base method.
+func (m *MockProfileProvider) AuthServerMetadata() map[string]any {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "AuthServerMetadata")
+	ret0, _ := ret[0].(map[string]any)
+	return ret0
+}
+
+// AuthServerMetadata indicates an expected call of AuthServerMetadata.
+func (mr *MockProfileProviderMockRecorder) AuthServerMetadata() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AuthServerMetadata", reflect.TypeOf((*MockProfileProvider)(nil).AuthServerMetadata))
+}
+
 // AuthType mocks base method.
 func (m *MockProfileProvider) AuthType() config.AuthMechanism {
 	m.ctrl.T.Helper()
@@ -176,6 +190,18 @@ func (m *MockProfileProvider) SetRefreshToken(arg0 string) {
 func (mr *MockProfileProviderMockRecorder) SetRefreshToken(arg0 any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetRefreshToken", reflect.TypeOf((*MockProfileProvider)(nil).SetRefreshToken), arg0)
+}
+
+// SetTokenExpiry mocks base method.
+func (m *MockProfileProvider) SetTokenExpiry(arg0 string) {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "SetTokenExpiry", arg0)
+}
+
+// SetTokenExpiry indicates an expected call of SetTokenExpiry.
+func (mr *MockProfileProviderMockRecorder) SetTokenExpiry(arg0 any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetTokenExpiry", reflect.TypeOf((*MockProfileProvider)(nil).SetTokenExpiry), arg0)
 }
 
 // Token mocks base method.

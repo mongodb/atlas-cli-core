@@ -506,6 +506,8 @@ func (p *Profile) tokenClaims() (jwt.RegisteredClaims, error) {
 
 	// All other auth types parse the access token as a JWT to extract claims.
 	// TODO: migrate these paths to stop depending on the access token format.
+
+	// ParseUnverified is ok here, only want to make sure is a JWT and to get the claims for a Subject.
 	_, _, err := new(jwt.Parser).ParseUnverified(p.AccessToken(), &c)
 	return c, err
 }

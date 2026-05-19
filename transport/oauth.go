@@ -92,7 +92,7 @@ func FlowForAuthIssuer(c AuthIssuerGetter, client *http.Client, version string) 
 	cfg, err := auth.NewConfigWithOptions(client,
 		auth.SetUserAgent(config.UserAgent(version)),
 		auth.SetClientID(id),
-		auth.SetScopes([]string{"openid", "profile", "offline_access"}),
+		auth.SetScopes([]string{"atlas"}),
 	)
 	if err != nil {
 		return nil, err

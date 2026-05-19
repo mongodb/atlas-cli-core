@@ -83,7 +83,7 @@ func TestFlowForAuthIssuer(t *testing.T) {
 			require.NoError(t, err)
 			assert.Equal(t, tt.expectedClientID, cfg.ClientID)
 			assert.Equal(t, tt.expectedAuthURL, cfg.AuthServerURL.String())
-			assert.Equal(t, []string{"openid", "profile", "offline_access"}, cfg.Scopes)
+			assert.Equal(t, []string{"atlas"}, cfg.Scopes)
 		})
 	}
 }

@@ -120,6 +120,16 @@ jobs:
         with:
           go-version-file: 'go.mod'
       - name: Install gocovmerge
+        # gocovmerge transitively pulls golang.org/x/tools, which now requires
+        # Go >= 1.25. actions/setup-go pins GOTOOLCHAIN=local for the job, so the
+        # install fails under the go.mod toolchain (1.24.x). GOTOOLCHAIN=auto does
+        # not help: the toolchain is selected up-front from the repo's go.mod
+        # (go 1.24.x) and the x/tools requirement is only discovered later during
+        # import resolution, so no upgrade is triggered. Set an explicit floor of
+        # go1.25.0 (with +auto to allow further upgrades) just for this step; the
+        # rest of the job keeps the pinned toolchain.
+        env:
+          GOTOOLCHAIN: go1.25.0+auto
         run: go install github.com/wadey/gocovmerge@latest
       - name: Download unit coverage
         uses: actions/download-artifact@v8

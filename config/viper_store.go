@@ -60,6 +60,14 @@ func NewViperStore(fs afero.Fs, loadEnvVars bool) (*ViperConfigStore, error) {
 		if hasMongoCLIEnvVars() {
 			v.SetEnvKeyReplacer(strings.NewReplacer(AtlasCLIEnvPrefix, MongoCLIEnvPrefix))
 		}
+
+		// The base_url alias below only applies to the config file, so the
+		// MONGODB_ATLAS_BASE_URL env var would otherwise be ignored. Bind both
+		// env vars to ops_manager_url; viper returns the first one set, giving
+		// MONGODB_ATLAS_OPS_MANAGER_URL precedence when both are present.
+		if err := v.BindEnv(OpsManagerURLField, AtlasCLIEnvPrefix+"_OPS_MANAGER_URL", AtlasCLIEnvPrefix+"_BASE_URL"); err != nil {
+			return nil, err
+		}
 	}
 
 	// aliases only work for a config file, this won't work for env variables

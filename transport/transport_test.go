@@ -41,7 +41,7 @@ func TestNewAccessTokenTransport(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, accessTokenTransport)
 
-	req := httptest.NewRequest(http.MethodGet, "http://example.com", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "http://example.com", nil)
 	resp, err := accessTokenTransport.RoundTrip(req)
 	require.NoError(t, err)
 	require.NotNil(t, resp)
@@ -81,7 +81,7 @@ func TestNewServiceAccountTransport(t *testing.T) {
 	}))
 	defer server.Close()
 
-	req := httptest.NewRequest(http.MethodGet, server.URL, nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, server.URL, nil)
 	resp, err := client.Transport.RoundTrip(req)
 	require.NoError(t, err)
 	require.NotNil(t, resp)

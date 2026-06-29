@@ -1,6 +1,6 @@
 module github.com/mongodb/atlas-cli-core
 
-go 1.24.2
+go 1.26
 
 require (
 	github.com/golang-jwt/jwt/v5 v5.3.1

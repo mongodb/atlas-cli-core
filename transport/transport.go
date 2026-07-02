@@ -24,7 +24,7 @@ import (
 
 	"github.com/mongodb-forks/digest"
 	"github.com/mongodb/atlas-cli-core/config"
-	"go.mongodb.org/atlas-sdk/v20250312006/auth/clientcredentials"
+	"go.mongodb.org/atlas-sdk/v20250312021/auth/clientcredentials"
 	atlasauth "go.mongodb.org/atlas/auth"
 	"golang.org/x/oauth2"
 )

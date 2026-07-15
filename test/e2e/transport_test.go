@@ -84,8 +84,7 @@ func TestServiceAccountTransport(t *testing.T) {
 
 // TestServiceAccountTokenReuse verifies that a persisted service-account token is reused across
 // separate client constructions (each construction simulates a new CLI invocation), so repeated
-// API calls do not mint a new token every time. This exercises the fix for CLOUDP-418568 where the
-// per-service-account active-token limit was being exhausted.
+// API calls do not mint a new token every time.
 func TestServiceAccountTokenReuse(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping test in short mode")

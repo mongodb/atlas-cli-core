@@ -115,7 +115,7 @@ func newSAServer(t *testing.T) *saServer {
 }
 
 // TestNewServiceAccountClient_ReusesSeedToken verifies a valid persisted token is reused, so no new
-// token is minted (the fix for the per-service-account active-token limit).
+// token is minted.
 func TestNewServiceAccountClient_ReusesSeedToken(t *testing.T) {
 	server := newSAServer(t)
 	defer server.Close()

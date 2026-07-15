@@ -20,7 +20,9 @@ import (
 	"os"
 	"path"
 	"testing"
+	"time"
 
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/mongodb/atlas-cli-core/mocks"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -438,4 +440,44 @@ func TestWithProfile_Multiple_Profiles(t *testing.T) {
 	stillRetrieved1, ok := ProfileFromContext(ctx1)
 	require.True(t, ok)
 	assert.Equal(t, "profile1", stillRetrieved1.name)
+}
+
+// jwtWithExpiry builds an unsigned-verification-safe JWT string carrying the given expiry.
+func jwtWithExpiry(t *testing.T, exp time.Time) string {
+	t.Helper()
+	claims := jwt.RegisteredClaims{ExpiresAt: jwt.NewNumericDate(exp)}
+	s, err := jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString([]byte("test-secret"))
+	require.NoError(t, err)
+	return s
+}
+
+func TestProfile_ServiceAccountToken(t *testing.T) {
+	t.Run("returns nil when no access token is persisted", func(t *testing.T) {
+		p := NewProfile("test", NewInMemoryStore())
+		tok, err := p.ServiceAccountToken()
+		require.NoError(t, err)
+		assert.Nil(t, tok)
+	})
+
+	t.Run("returns nil when the persisted access token is not a JWT", func(t *testing.T) {
+		p := NewProfile("test", NewInMemoryStore())
+		p.SetAccessToken("not-a-jwt")
+		tok, err := p.ServiceAccountToken()
+		require.NoError(t, err)
+		assert.Nil(t, tok, "a non-JWT token should be treated as no token so a fresh one is minted")
+	})
+
+	t.Run("returns token with expiry parsed from the JWT and no refresh token", func(t *testing.T) {
+		exp := time.Now().Add(45 * time.Minute).Truncate(time.Second)
+		p := NewProfile("test", NewInMemoryStore())
+		p.SetAccessToken(jwtWithExpiry(t, exp))
+
+		tok, err := p.ServiceAccountToken()
+		require.NoError(t, err)
+		require.NotNil(t, tok)
+		assert.Equal(t, p.AccessToken(), tok.AccessToken)
+		assert.Equal(t, "Bearer", tok.TokenType)
+		assert.Empty(t, tok.RefreshToken, "service account tokens have no refresh token")
+		assert.WithinDuration(t, exp, tok.Expiry, time.Second)
+	})
 }

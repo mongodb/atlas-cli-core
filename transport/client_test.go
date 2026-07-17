@@ -97,6 +97,7 @@ func TestHTTPClientFromProfile(t *testing.T) {
 				m.EXPECT().AuthType().Return(config.UserAccount)
 				m.EXPECT().Token().Return(nil, nil)
 				// Falls through to ServiceAccount case
+				m.EXPECT().ServiceAccountToken().Return(nil, nil)
 				m.EXPECT().ClientID().Return("client-id")
 				m.EXPECT().ClientSecret().Return("client-secret")
 				m.EXPECT().OpsManagerURL().Return("")
@@ -120,6 +121,7 @@ func TestHTTPClientFromProfile(t *testing.T) {
 			name: "Service Account authentication",
 			setupMock: func(m *MockProfileProvider) {
 				m.EXPECT().AuthType().Return(config.ServiceAccount)
+				m.EXPECT().ServiceAccountToken().Return(nil, nil)
 				m.EXPECT().ClientID().Return("client-id")
 				m.EXPECT().ClientSecret().Return("client-secret")
 				m.EXPECT().OpsManagerURL().Return("https://ops-manager.example.com")
@@ -135,6 +137,7 @@ func TestHTTPClientFromProfile(t *testing.T) {
 			name: "Service Account authentication with empty OpsManagerURL",
 			setupMock: func(m *MockProfileProvider) {
 				m.EXPECT().AuthType().Return(config.ServiceAccount)
+				m.EXPECT().ServiceAccountToken().Return(nil, nil)
 				m.EXPECT().ClientID().Return("client-id")
 				m.EXPECT().ClientSecret().Return("client-secret")
 				m.EXPECT().OpsManagerURL().Return("")

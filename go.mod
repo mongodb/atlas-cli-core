@@ -13,6 +13,7 @@ require (
 	go.mongodb.org/atlas v0.38.0
 	go.mongodb.org/atlas-sdk/v20250312006 v20250312006.0.0
 	go.uber.org/mock v0.6.0
+	golang.org/x/oauth2 v0.30.0
 )
 
 require (
@@ -32,7 +33,6 @@ require (
 	github.com/subosito/gotenv v1.6.0 // indirect
 	go.yaml.in/yaml/v3 v3.0.4 // indirect
 	golang.org/x/mod v0.27.0 // indirect
-	golang.org/x/oauth2 v0.30.0 // indirect
 	golang.org/x/sync v0.16.0 // indirect
 	golang.org/x/sys v0.35.0 // indirect
 	golang.org/x/text v0.28.0 // indirect

@@ -439,6 +439,28 @@ func (p *Profile) Token() (*auth.Token, error) {
 	return t, nil
 }
 
+// ServiceAccountToken returns the persisted service-account access token.
+// Unlike Token(), it does not require a refresh token (service accounts have none);
+// the expiry is derived from the JWT claims so callers can reuse the token until it
+// expires instead of minting a new one on every invocation.
+func ServiceAccountToken() (*auth.Token, error) { return Default().ServiceAccountToken() }
+func (p *Profile) ServiceAccountToken() (*auth.Token, error) {
+	if p.AccessToken() == "" {
+		return nil, nil
+	}
+	c, err := p.tokenClaims()
+	if err != nil || c.ExpiresAt == nil {
+		// The persisted access token is not a usable JWT (or carries no expiry), so we can't
+		// safely reuse it; report no token and let the caller mint a fresh one.
+		return nil, nil //nolint:nilerr // a non-JWT token is intentionally treated as "no token"
+	}
+	return &auth.Token{
+		AccessToken: p.AccessToken(),
+		TokenType:   "Bearer",
+		Expiry:      c.ExpiresAt.Time,
+	}, nil
+}
+
 // AccessTokenSubject will return the encoded subject in a JWT.
 // This method won't verify the token signature, it's only safe to use to get the token claims.
 func AccessTokenSubject() (string, error) { return Default().AccessTokenSubject() }

@@ -15,10 +15,12 @@
 package transport
 
 import (
+	"context"
 	"net/http"
 
 	"github.com/mongodb/atlas-cli-core/config"
 	"go.mongodb.org/atlas/auth"
+	"golang.org/x/oauth2"
 )
 
 //go:generate go tool go.uber.org/mock/mockgen -destination=mock_profile_provider.go -package=transport github.com/mongodb/atlas-cli-core/transport ProfileProvider
@@ -29,6 +31,7 @@ type ProfileProvider interface {
 	PublicAPIKey() string
 	PrivateAPIKey() string
 	Token() (*auth.Token, error)
+	ServiceAccountToken() (*auth.Token, error)
 	SetAccessToken(string)
 	SetRefreshToken(string)
 	Save() error
@@ -68,7 +71,15 @@ func HTTPClientFromProfile(profile ProfileProvider, version string, httpTranspor
 		// No token available, we're falling back to the default client (default branch)
 		fallthrough
 	case config.ServiceAccount:
-		return NewServiceAccountClientWithHost(profile.ClientID(), profile.ClientSecret(), profile.OpsManagerURL()), nil
+		seed, err := profile.ServiceAccountToken()
+		if err != nil {
+			return nil, err
+		}
+		return NewServiceAccountClientWithHost(context.Background(), profile.ClientID(), profile.ClientSecret(), profile.OpsManagerURL(), version, seed,
+			func(t *oauth2.Token) error {
+				profile.SetAccessToken(t.AccessToken)
+				return profile.Save()
+			}), nil
 	case config.NoAuth:
 		fallthrough
 	default:

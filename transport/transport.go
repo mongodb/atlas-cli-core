@@ -26,6 +26,7 @@ import (
 	"github.com/mongodb/atlas-cli-core/config"
 	"go.mongodb.org/atlas-sdk/v20250312006/auth/clientcredentials"
 	atlasauth "go.mongodb.org/atlas/auth"
+	"golang.org/x/oauth2"
 )
 
 const (
@@ -136,14 +137,55 @@ func (tr *tokenTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	return tr.base.RoundTrip(req)
 }
 
+// persistingTokenSource wraps a token source and writes any newly minted token back to disk
+// via save, so it can be reused across CLI invocations instead of minting a new one each time.
+type persistingTokenSource struct {
+	src  oauth2.TokenSource
+	last string // access token last known to be saved to disk; empty means "save whatever comes back"
+	save func(*oauth2.Token) error
+}
+
+func (p *persistingTokenSource) Token() (*oauth2.Token, error) {
+	t, err := p.src.Token()
+	if err != nil {
+		return nil, err
+	}
+	if t.AccessToken != p.last {
+		if err := p.save(t); err != nil {
+			return nil, err
+		}
+		p.last = t.AccessToken
+	}
+	return t, nil
+}
+
 // NewServiceAccountClientWithHost creates a new HTTP client configured for service account authentication.
 // This function does not return http.RoundTripper as atlas-sdk already packages a transport with the client.
-func NewServiceAccountClientWithHost(clientID, clientSecret, host string) *http.Client {
+// This function reuses a previously persisted access token until it expires, minting and persisting a new one only when
+// needed. This keeps a service account within its active-token limit (roughly one token per hour
+// instead of one per command). seed may be nil when no token has been persisted yet; save is called
+// whenever a new token is minted so it can be stored for the next invocation.
+func NewServiceAccountClientWithHost(ctx context.Context, clientID, clientSecret, host, version string, seed *atlasauth.Token, save func(*oauth2.Token) error) *http.Client {
 	cfg := clientcredentials.NewConfig(clientID, clientSecret)
 	if host != "" {
 		baseURL := strings.TrimSuffix(host, "/")
 		cfg.TokenURL = baseURL + clientcredentials.TokenAPIPath
 		cfg.RevokeURL = baseURL + clientcredentials.RevokeAPIPath
 	}
-	return cfg.Client(context.Background())
+
+	// The client-credentials source performs the 2-legged OAuth exchange to mint a fresh token, if needed.
+	src := cfg.TokenSource(ctx)
+	last := ""
+	if seed != nil {
+		seedToken := &oauth2.Token{AccessToken: seed.AccessToken, TokenType: "Bearer", Expiry: seed.Expiry}
+		if seedToken.Valid() {
+			// Reuse the persisted token while valid; fall back to minting a new one on expiry.
+			src = oauth2.ReuseTokenSource(seedToken, src)
+			last = seedToken.AccessToken
+		}
+	}
+
+	client := oauth2.NewClient(ctx, &persistingTokenSource{src: src, last: last, save: save})
+	client.Transport = &clientcredentials.Transport{Base: client.Transport, UserAgent: config.UserAgent(version)}
+	return client
 }

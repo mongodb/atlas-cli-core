@@ -139,6 +139,21 @@ func (mr *MockProfileProviderMockRecorder) Save() *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Save", reflect.TypeOf((*MockProfileProvider)(nil).Save))
 }
 
+// ServiceAccountToken mocks base method.
+func (m *MockProfileProvider) ServiceAccountToken() (*auth.Token, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ServiceAccountToken")
+	ret0, _ := ret[0].(*auth.Token)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ServiceAccountToken indicates an expected call of ServiceAccountToken.
+func (mr *MockProfileProviderMockRecorder) ServiceAccountToken() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ServiceAccountToken", reflect.TypeOf((*MockProfileProvider)(nil).ServiceAccountToken))
+}
+
 // SetAccessToken mocks base method.
 func (m *MockProfileProvider) SetAccessToken(arg0 string) {
 	m.ctrl.T.Helper()

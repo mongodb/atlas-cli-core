@@ -50,7 +50,7 @@ func TestFlowForAuthIssuer(t *testing.T) {
 		{
 			name:             "gov defaults",
 			getter:           &fakeAuthIssuerGetter{service: config.CloudGovService},
-			expectedClientID: govAuthIssuerClientID,
+			expectedClientID: authIssuerClientID,
 			expectedAuthURL:  govDefaultAuthIssuerURL,
 		},
 		{
@@ -62,7 +62,7 @@ func TestFlowForAuthIssuer(t *testing.T) {
 		{
 			name:             "auth server URL override beats gov default",
 			getter:           &fakeAuthIssuerGetter{service: config.CloudGovService, authServerURL: "https://override.example.com"},
-			expectedClientID: govAuthIssuerClientID,
+			expectedClientID: authIssuerClientID,
 			expectedAuthURL:  "https://override.example.com",
 		},
 		{

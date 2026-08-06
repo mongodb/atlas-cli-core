@@ -29,13 +29,12 @@ const (
 	ClientID    = "0oabtxactgS3gHIR0297" // ClientID for production
 	GovClientID = "0oabtyfelbTBdoucy297" // GovClientID for production
 
-	// Client IDs and gov URL for the dedicated OAuth Authorization Server.
+	// Client ID and gov URL for the dedicated OAuth Authorization Server.
 	// The commercial auth issuer URL comes from the auth.Config.AuthServerURL field,
 	// populated by default in auth.NewConfig from go.mongodb.org/atlas.
 	// The gov URL is a placeholder pending the gov AS deployment.
 	govDefaultAuthIssuerURL = "https://authorize.mongodbgov.com"
-	authIssuerClientID      = "0oabtxactgS3gHIR0297" // placeholder: same as production until new AS client is provisioned
-	govAuthIssuerClientID   = "0oabtyfelbTBdoucy297" // placeholder: same as gov production until new AS client is provisioned
+	authIssuerClientID      = "5cc53c56-022d-41e7-928f-46621e62f8c1"
 )
 
 type ServiceGetter interface {
@@ -85,8 +84,6 @@ func FlowForAuthIssuer(c AuthIssuerGetter, client *http.Client, version string) 
 	id := authIssuerClientID
 	if c.ClientID() != "" {
 		id = c.ClientID()
-	} else if c.Service() == config.CloudGovService {
-		id = govAuthIssuerClientID
 	}
 
 	cfg, err := auth.NewConfigWithOptions(client,

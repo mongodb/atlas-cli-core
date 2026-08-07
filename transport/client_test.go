@@ -149,6 +149,38 @@ func TestHTTPClientFromProfile(t *testing.T) {
 			},
 		},
 		{
+			name: "User Delegation with valid token",
+			setupMock: func(m *MockProfileProvider) {
+				token := &auth.Token{
+					AccessToken:  "access-token",
+					RefreshToken: "refresh-token",
+					TokenType:    "Bearer",
+					Expiry:       time.Now().Add(time.Hour),
+				}
+				m.EXPECT().AuthType().Return(config.UserDelegation)
+				m.EXPECT().Token().Return(token, nil)
+				m.EXPECT().AuthServerMetadata().Return(map[string]any{})
+			},
+			validateFunc: func(t *testing.T, client *http.Client) {
+				t.Helper()
+				require.NotNil(t, client)
+				_, ok := client.Transport.(*authServerTransport)
+				require.True(t, ok, "Expected authServerTransport for UserDelegation auth")
+			},
+		},
+		{
+			name: "User Delegation with nil token falls through to unauthenticated client",
+			setupMock: func(m *MockProfileProvider) {
+				m.EXPECT().AuthType().Return(config.UserDelegation)
+				m.EXPECT().Token().Return(nil, nil)
+			},
+			validateFunc: func(t *testing.T, client *http.Client) {
+				t.Helper()
+				require.NotNil(t, client)
+				assert.Equal(t, httpTransport, client.Transport)
+			},
+		},
+		{
 			name: "NoAuth authentication",
 			setupMock: func(m *MockProfileProvider) {
 				m.EXPECT().AuthType().Return(config.NoAuth)

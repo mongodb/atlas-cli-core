@@ -481,3 +481,78 @@ func TestProfile_ServiceAccountToken(t *testing.T) {
 		assert.WithinDuration(t, exp, tok.Expiry, time.Second)
 	})
 }
+
+func TestProfile_TokenExpiry(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockStore := mocks.NewMockStore(ctrl)
+	p := &Profile{name: DefaultProfile, configStore: mockStore}
+
+	mockStore.EXPECT().SetProfileValue(DefaultProfile, TokenExpiryField, "2026-05-13T12:00:00Z").Times(1)
+	mockStore.EXPECT().GetHierarchicalValue(DefaultProfile, TokenExpiryField).Return("2026-05-13T12:00:00Z").Times(1)
+
+	p.SetTokenExpiry("2026-05-13T12:00:00Z")
+	assert.Equal(t, "2026-05-13T12:00:00Z", p.TokenExpiry())
+}
+
+func TestProfile_AuthServerURL(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockStore := mocks.NewMockStore(ctrl)
+	p := &Profile{name: DefaultProfile, configStore: mockStore}
+
+	mockStore.EXPECT().SetProfileValue(DefaultProfile, AuthServerURLField, "https://authorize.example.com").Times(1)
+	mockStore.EXPECT().GetHierarchicalValue(DefaultProfile, AuthServerURLField).Return("https://authorize.example.com").Times(1)
+
+	p.SetAuthServerURL("https://authorize.example.com")
+	assert.Equal(t, "https://authorize.example.com", p.AuthServerURL())
+
+	// AuthServerURL is user-configurable, so it must appear in ProfileProperties()
+	assert.Contains(t, ProfileProperties(), AuthServerURLField)
+}
+
+func TestProfile_AuthServerMetadata(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockStore := mocks.NewMockStore(ctrl)
+	p := &Profile{name: DefaultProfile, configStore: mockStore}
+
+	metadata := map[string]any{
+		"metadata": map[string]any{"issuer": "https://authorize.example.com"},
+		"expiry":   "2026-05-20T00:00:00Z",
+	}
+
+	mockStore.EXPECT().SetProfileValue(DefaultProfile, authServerMetadataField, metadata).Times(1)
+	p.SetAuthServerMetadata(metadata)
+
+	t.Run("round-trip", func(t *testing.T) {
+		mockStore.EXPECT().GetHierarchicalValue(DefaultProfile, authServerMetadataField).Return(metadata).Times(1)
+		assert.Equal(t, metadata, p.AuthServerMetadata())
+	})
+
+	t.Run("nil when unset", func(t *testing.T) {
+		mockStore.EXPECT().GetHierarchicalValue(DefaultProfile, authServerMetadataField).Return(nil).Times(1)
+		assert.Nil(t, p.AuthServerMetadata())
+	})
+
+	t.Run("nil when underlying value is wrong type", func(t *testing.T) {
+		mockStore.EXPECT().GetHierarchicalValue(DefaultProfile, authServerMetadataField).Return("not-a-map").Times(1)
+		assert.Nil(t, p.AuthServerMetadata())
+	})
+}
+
+func TestProfile_TokenClaims_UserDelegation(t *testing.T) {
+	p := &Profile{name: DefaultProfile, configStore: NewInMemoryStore()}
+	// AuthType()'s env-var sniffing reads from Default(), so route those calls
+	// through the same profile for the duration of the test.
+	prev := Default()
+	SetDefaultProfile(p)
+	t.Cleanup(func() { SetDefaultProfile(prev) })
+
+	p.SetAuthType(UserDelegation)
+	p.SetTokenExpiry("2026-05-13T12:00:00Z")
+
+	claims, err := p.tokenClaims()
+	require.NoError(t, err)
+	require.NotNil(t, claims.ExpiresAt)
+	assert.Equal(t, "2026-05-13T12:00:00Z", claims.ExpiresAt.Format("2006-01-02T15:04:05Z"))
+	// Subject is not populated for UserDelegation — the access token is not parsed
+	assert.Empty(t, claims.Subject)
+}

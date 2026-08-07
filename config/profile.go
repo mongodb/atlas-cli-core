@@ -44,9 +44,12 @@ const (
 	privateAPIKey            = "private_api_key"
 	AccessTokenField         = "access_token"
 	RefreshTokenField        = "refresh_token"
+	TokenExpiryField         = "token_expiry"
 	ClientIDField            = "client_id"
 	ClientSecretField        = "client_secret"
 	OpsManagerURLField       = "ops_manager_url"
+	AuthServerURLField       = "auth_server_url"
+	authServerMetadataField  = "auth_server_metadata"
 	AccountURLField          = "account_url"
 	baseURL                  = "base_url"
 	apiVersion               = "api_version"
@@ -159,6 +162,7 @@ func ProfileProperties() []string {
 		apiVersion,
 		baseURL,
 		OpsManagerURLField,
+		AuthServerURLField,
 		orgID,
 		output,
 		privateAPIKey,
@@ -313,6 +317,7 @@ type AuthMechanism string
 const (
 	APIKeys        AuthMechanism = "api_keys"
 	UserAccount    AuthMechanism = "user_account"
+	UserDelegation AuthMechanism = "user_delegation"
 	ServiceAccount AuthMechanism = "service_account"
 	NoAuth         AuthMechanism = "no_auth"
 )
@@ -472,9 +477,37 @@ func (p *Profile) AccessTokenSubject() (string, error) {
 	return c.Subject, err
 }
 
+// TokenExpiry gets the stored token expiry time.
+func TokenExpiry() string { return Default().TokenExpiry() }
+func (p *Profile) TokenExpiry() string {
+	return p.GetString(TokenExpiryField)
+}
+
+// SetTokenExpiry stores the token expiry time.
+func SetTokenExpiry(v string) { Default().SetTokenExpiry(v) }
+func (p *Profile) SetTokenExpiry(v string) {
+	p.Set(TokenExpiryField, v)
+}
+
 func (p *Profile) tokenClaims() (jwt.RegisteredClaims, error) {
 	c := jwt.RegisteredClaims{}
-	// ParseUnverified is ok here, only want to make sure is a JWT and to get the claims for a Subject
+
+	if p.AuthType() == UserDelegation {
+		// UserDelegation reads expiry from the stored token_expiry field,
+		// populated from expires_in at token acquisition time. The access
+		// token is not parsed. Subject is not available in this path.
+		if expiry := p.TokenExpiry(); expiry != "" {
+			if t, err := time.Parse(time.RFC3339, expiry); err == nil {
+				c.ExpiresAt = jwt.NewNumericDate(t)
+			}
+		}
+		return c, nil
+	}
+
+	// All other auth types parse the access token as a JWT to extract claims.
+	// TODO: migrate these paths to stop depending on the access token format.
+
+	// ParseUnverified is ok here, only want to make sure is a JWT and to get the claims for a Subject.
 	_, _, err := new(jwt.Parser).ParseUnverified(p.AccessToken(), &c)
 	return c, err
 }
@@ -503,10 +536,42 @@ func (p *Profile) SetOpsManagerURL(v string) {
 	p.Set(OpsManagerURLField, v)
 }
 
+// AuthServerURL gets the configured auth server URL override.
+func AuthServerURL() string { return Default().AuthServerURL() }
+func (p *Profile) AuthServerURL() string {
+	return p.GetString(AuthServerURLField)
+}
+
+// SetAuthServerURL sets the configured auth server URL override.
+func SetAuthServerURL(v string) { Default().SetAuthServerURL(v) }
+func (p *Profile) SetAuthServerURL(v string) {
+	p.Set(AuthServerURLField, v)
+}
+
 // AccountURL gets the configured account base url.
 func AccountURL() string { return Default().AccountURL() }
 func (p *Profile) AccountURL() string {
 	return p.GetString(AccountURLField)
+}
+
+// AuthServerMetadata gets the cached OAuth Authorization Server metadata.
+// Returns nil if no metadata is cached.
+func AuthServerMetadata() map[string]any { return Default().AuthServerMetadata() }
+func (p *Profile) AuthServerMetadata() map[string]any {
+	value := p.Get(authServerMetadataField)
+	if value == nil {
+		return nil
+	}
+	if m, ok := value.(map[string]any); ok {
+		return m
+	}
+	return nil
+}
+
+// SetAuthServerMetadata stores the OAuth Authorization Server metadata in the profile.
+func SetAuthServerMetadata(v map[string]any) { Default().SetAuthServerMetadata(v) }
+func (p *Profile) SetAuthServerMetadata(v map[string]any) {
+	p.Set(authServerMetadataField, v)
 }
 
 // ProjectID get configured project ID.

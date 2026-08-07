@@ -17,6 +17,7 @@ package transport
 import (
 	"context"
 	"net/http"
+	"time"
 
 	"github.com/mongodb/atlas-cli-core/config"
 	"go.mongodb.org/atlas/auth"
@@ -34,10 +35,12 @@ type ProfileProvider interface {
 	ServiceAccountToken() (*auth.Token, error)
 	SetAccessToken(string)
 	SetRefreshToken(string)
+	SetTokenExpiry(string)
 	Save() error
 	ClientID() string
 	ClientSecret() string
 	OpsManagerURL() string
+	AuthServerMetadata() map[string]any
 }
 
 func HTTPClient(version string, httpTransport http.RoundTripper) (*http.Client, error) {
@@ -80,6 +83,29 @@ func HTTPClientFromProfile(profile ProfileProvider, version string, httpTranspor
 				profile.SetAccessToken(t.AccessToken)
 				return profile.Save()
 			}), nil
+	case config.UserDelegation:
+		token, err := profile.Token()
+		if err != nil {
+			return nil, err
+		}
+
+		if token != nil {
+			tr, err := NewAccessTokenTransportForAuthIssuer(token, httpTransport, version, profile.AuthServerMetadata(), func(t *auth.Token) error {
+				profile.SetAccessToken(t.AccessToken)
+				profile.SetRefreshToken(t.RefreshToken)
+				if !t.Expiry.IsZero() {
+					profile.SetTokenExpiry(t.Expiry.Format(time.RFC3339))
+				}
+				return profile.Save()
+			})
+			if err != nil {
+				return nil, err
+			}
+			return &http.Client{Transport: tr}, nil
+		}
+
+		// No token available, fall through to unauthenticated client
+		fallthrough
 	case config.NoAuth:
 		fallthrough
 	default:

@@ -19,6 +19,8 @@ import (
 	"os"
 	"runtime"
 	"strings"
+
+	"go.mongodb.org/atlas-sdk/v20250312024/detectaiagent"
 )
 
 var (
@@ -80,6 +82,15 @@ func envIsTrue(env string) bool {
 	return IsTrue(os.Getenv(env))
 }
 
+// UserAgent returns the User-Agent identifying this tool. When it is invoked by
+// a known AI agent, an ai-agent/<id> identifier is appended.
 func UserAgent(version string) string {
-	return fmt.Sprintf("%s/%s (%s;%s;%s)", AtlasCLI, version, runtime.GOOS, runtime.GOARCH, HostName)
+	userAgent := fmt.Sprintf("%s/%s (%s;%s;%s)", AtlasCLI, version, runtime.GOOS, runtime.GOARCH, HostName)
+
+	agent, ok := detectaiagent.Detect()
+	if !ok {
+		return userAgent
+	}
+
+	return userAgent + " " + agent.UserAgentIdentifier
 }

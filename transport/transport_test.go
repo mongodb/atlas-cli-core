@@ -348,3 +348,45 @@ func TestTelemetryTimeout_SlowServerDoesNotBlock(t *testing.T) {
 	assert.GreaterOrEqual(t, elapsed, 900*time.Millisecond,
 		"request should have waited close to the timeout before giving up")
 }
+
+// TestNewServiceAccountTransportSendsAIAgentUserAgent verifies that the User-Agent
+// built by config.UserAgent, including the ai-agent identifier, reaches the wire.
+// This transport overwrites the User-Agent set by the SDK, so it has to carry the
+// identifier itself.
+func TestNewServiceAccountTransportSendsAIAgentUserAgent(t *testing.T) {
+	t.Setenv("CURSOR_AGENT", "1")
+
+	tokenServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if _, err := w.Write([]byte(`{"access_token":"mock-token","token_type":"bearer","expires_in":3600}`)); err != nil {
+			t.Errorf("Failed to write response: %v", err)
+		}
+	}))
+	defer tokenServer.Close()
+
+	originalURL := config.OpsManagerURL()
+	config.SetOpsManagerURL(tokenServer.URL + "/")
+	defer func() { config.SetOpsManagerURL(originalURL) }()
+
+	var gotUserAgent string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotUserAgent = r.Header.Get("User-Agent")
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	client := NewServiceAccountClientWithHost(t.Context(), "mock-client-id", "mock-client-secret", tokenServer.URL, "1.0.0", nil, func(_ *oauth2.Token) error { return nil })
+	require.NotNil(t, client)
+
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, server.URL, nil)
+	require.NoError(t, err)
+	// A User-Agent set by the caller is expected to be replaced by this transport.
+	req.Header.Set("User-Agent", "should-be-overwritten")
+
+	resp, err := client.Do(req)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+
+	assert.Equal(t, config.UserAgent("1.0.0"), gotUserAgent)
+	assert.Contains(t, gotUserAgent, "ai-agent/cursor")
+}

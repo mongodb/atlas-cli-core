@@ -16,6 +16,7 @@ package config
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -24,6 +25,7 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
+	"go.mongodb.org/atlas-sdk/v20250312027/auth/code"
 	"go.mongodb.org/atlas/auth"
 )
 
@@ -44,6 +46,8 @@ const (
 	privateAPIKey            = "private_api_key"
 	AccessTokenField         = "access_token"
 	RefreshTokenField        = "refresh_token"
+	TokenExpiryField         = "token_expiry" //nolint:gosec // config key, not a credential
+	AuthServerMetadataField  = "auth_server_metadata"
 	ClientIDField            = "client_id"
 	ClientSecretField        = "client_secret"
 	OpsManagerURLField       = "ops_manager_url"
@@ -157,6 +161,7 @@ func ProfileProperties() []string {
 	return []string{
 		AccessTokenField,
 		apiVersion,
+		AuthServerMetadataField,
 		baseURL,
 		OpsManagerURLField,
 		orgID,
@@ -168,6 +173,7 @@ func ProfileProperties() []string {
 		ClientSecretField,
 		RefreshTokenField,
 		service,
+		TokenExpiryField,
 	}
 }
 
@@ -311,10 +317,14 @@ func (p *Profile) SetService(v string) {
 type AuthMechanism string
 
 const (
-	APIKeys        AuthMechanism = "api_keys"
-	UserAccount    AuthMechanism = "user_account"
-	ServiceAccount AuthMechanism = "service_account"
-	NoAuth         AuthMechanism = "no_auth"
+	APIKeys AuthMechanism = "api_keys"
+	// UserAccount is the Authorization Code + PKCE flow. Its meaning depends on the
+	// version 3 config migration in mongodb-atlas-cli renaming legacy profiles to
+	// UserAccountLegacy; both must ship in lockstep.
+	UserAccount       AuthMechanism = "user_account"
+	UserAccountLegacy AuthMechanism = "user_account_legacy"
+	ServiceAccount    AuthMechanism = "service_account"
+	NoAuth            AuthMechanism = "no_auth"
 )
 
 // AuthType determines the auth type, prioritizing credentials set via
@@ -390,6 +400,18 @@ func (p *Profile) RefreshToken() string {
 func SetRefreshToken(v string) { Default().SetRefreshToken(v) }
 func (p *Profile) SetRefreshToken(v string) {
 	p.Set(RefreshTokenField, v)
+}
+
+// TokenExpiry get configured access token expiry (RFC 3339).
+func TokenExpiry() string { return Default().TokenExpiry() }
+func (p *Profile) TokenExpiry() string {
+	return p.GetString(TokenExpiryField)
+}
+
+// SetTokenExpiry set configured access token expiry (RFC 3339).
+func SetTokenExpiry(v string) { Default().SetTokenExpiry(v) }
+func (p *Profile) SetTokenExpiry(v string) {
+	p.Set(TokenExpiryField, v)
 }
 
 // ClientID get configured client ID.
@@ -474,6 +496,19 @@ func (p *Profile) AccessTokenSubject() (string, error) {
 
 func (p *Profile) tokenClaims() (jwt.RegisteredClaims, error) {
 	c := jwt.RegisteredClaims{}
+
+	// user_account tokens are not JWTs: expiry comes from token_expiry (from expires_in).
+	if p.AuthType() == UserAccount {
+		if expiry := p.TokenExpiry(); expiry != "" {
+			t, err := time.Parse(time.RFC3339, expiry)
+			if err != nil {
+				return c, fmt.Errorf("invalid %s: %w", TokenExpiryField, err)
+			}
+			c.ExpiresAt = jwt.NewNumericDate(t)
+		}
+		return c, nil
+	}
+
 	// ParseUnverified is ok here, only want to make sure is a JWT and to get the claims for a Subject
 	_, _, err := new(jwt.Parser).ParseUnverified(p.AccessToken(), &c)
 	return c, err
@@ -501,6 +536,45 @@ func (p *Profile) OpsManagerURL() string {
 func SetOpsManagerURL(v string) { Default().SetOpsManagerURL(v) }
 func (p *Profile) SetOpsManagerURL(v string) {
 	p.Set(OpsManagerURLField, v)
+}
+
+// authServerMetadataCache persists AuthServerMetadata plus its cache expiry.
+type authServerMetadataCache struct {
+	Metadata    code.AuthServerMetadata `json:"metadata"`
+	CacheExpiry time.Time               `json:"cache_expiry"`
+}
+
+// AuthServerMetadata get cached OAuth Authorization Server metadata.
+func AuthServerMetadata() (*code.AuthServerMetadata, error) { return Default().AuthServerMetadata() }
+func (p *Profile) AuthServerMetadata() (*code.AuthServerMetadata, error) {
+	raw := p.GetString(AuthServerMetadataField)
+	if raw == "" {
+		return nil, nil
+	}
+	var cache authServerMetadataCache
+	if err := json.Unmarshal([]byte(raw), &cache); err != nil {
+		return nil, nil //nolint:nilerr // a corrupt cache is treated as no cache
+	}
+	metadata := cache.Metadata
+	metadata.CacheExpiry = cache.CacheExpiry
+	return &metadata, nil
+}
+
+// SetAuthServerMetadata store cached OAuth Authorization Server metadata.
+func SetAuthServerMetadata(m *code.AuthServerMetadata) error {
+	return Default().SetAuthServerMetadata(m)
+}
+func (p *Profile) SetAuthServerMetadata(m *code.AuthServerMetadata) error {
+	if m == nil {
+		p.Set(AuthServerMetadataField, "")
+		return nil
+	}
+	raw, err := json.Marshal(authServerMetadataCache{Metadata: *m, CacheExpiry: m.CacheExpiry})
+	if err != nil {
+		return fmt.Errorf("marshaling auth server metadata: %w", err)
+	}
+	p.Set(AuthServerMetadataField, string(raw))
+	return nil
 }
 
 // AccountURL gets the configured account base url.

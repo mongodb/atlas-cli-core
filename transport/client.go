@@ -19,6 +19,7 @@ import (
 	"net/http"
 
 	"github.com/mongodb/atlas-cli-core/config"
+	"go.mongodb.org/atlas-sdk/v20250312027/auth/code"
 	"go.mongodb.org/atlas/auth"
 	"golang.org/x/oauth2"
 )
@@ -34,10 +35,14 @@ type ProfileProvider interface {
 	ServiceAccountToken() (*auth.Token, error)
 	SetAccessToken(string)
 	SetRefreshToken(string)
+	SetTokenExpiry(string)
 	Save() error
 	ClientID() string
 	ClientSecret() string
 	OpsManagerURL() string
+	Service() string
+	AuthServerMetadata() (*code.AuthServerMetadata, error)
+	SetAuthServerMetadata(*code.AuthServerMetadata) error
 }
 
 func HTTPClient(version string, httpTransport http.RoundTripper) (*http.Client, error) {
@@ -50,6 +55,22 @@ func HTTPClientFromProfile(profile ProfileProvider, version string, httpTranspor
 		t := NewDigestTransport(profile.PublicAPIKey(), profile.PrivateAPIKey(), httpTransport)
 		return t.Client()
 	case config.UserAccount:
+		token, err := profile.Token()
+		if err != nil {
+			return nil, err
+		}
+
+		if token != nil {
+			tr, err := NewAuthCodeTransport(profile, token, httpTransport, version)
+			if err != nil {
+				return nil, err
+			}
+			return &http.Client{Transport: tr}, nil
+		}
+
+		// No token available, we're falling back to the default client (default branch)
+		fallthrough
+	case config.UserAccountLegacy:
 		token, err := profile.Token()
 		if err != nil {
 			return nil, err

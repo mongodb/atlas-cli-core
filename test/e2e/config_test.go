@@ -53,7 +53,15 @@ func TestConfig(t *testing.T) {
 		assert.Contains(t, err.Error(), "config version is missing")
 	})
 
-	t.Run("LoadAtlasCLIConfig with version 2 succeeds", func(t *testing.T) {
+	t.Run("LoadAtlasCLIConfig with version 2 config fails", func(t *testing.T) {
+		withVersion2Config(t)
+		profile, err := config.LoadAtlasCLIConfig()
+		require.Nil(t, profile)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "config version 2 is older than expected version 3")
+	})
+
+	t.Run("LoadAtlasCLIConfig with version 3 succeeds", func(t *testing.T) {
 		withNewConfig(t)
 		profile, err := config.LoadAtlasCLIConfig()
 		require.NoError(t, err)
@@ -71,9 +79,9 @@ func TestConfig(t *testing.T) {
 		assert.Equal(t, "config_test", profile.Name())
 	})
 
-	t.Run("LoadAtlasCLIConfigWithVersion(2) succeeds", func(t *testing.T) {
+	t.Run("LoadAtlasCLIConfigWithVersion(3) succeeds", func(t *testing.T) {
 		withNewConfig(t)
-		profile, err := config.LoadAtlasCLIConfigWithVersion(2)
+		profile, err := config.LoadAtlasCLIConfigWithVersion(3)
 		require.NoError(t, err)
 		require.NotNil(t, profile)
 		assert.Equal(t, "default", profile.Name())
@@ -172,7 +180,7 @@ func TestMixedConfigurationSources(t *testing.T) {
 
 		// Create config file with values
 		configPath := filepath.Join(dir, "config.toml")
-		configContent := `version = 2
+		configContent := `version = 3
 [default]
 project_id = "file_project"
 org_id = "file_org"
@@ -225,7 +233,7 @@ service = "cloud"
 
 		// Create config with global and profile-specific settings
 		configPath := filepath.Join(dir, "config.toml")
-		configContent := `version = 2
+		configContent := `version = 3
 skip_update_check = true
 telemetry_enabled = false
 
@@ -272,12 +280,29 @@ func withNewConfig(t *testing.T) {
 	configPath := path.Join(dir, "config.toml")
 
 	err := os.WriteFile(configPath, []byte(`
-  version = 2
+  version = 3
   silence_storage_warning = true
   [config_test]
   org_id = "new_config_org_id"
   client_id = "new_config_client_id"
   client_secret = "new_config_client_secret"
+  service = "cloud"
+`), 0600)
+	require.NoError(t, err)
+}
+
+// loads a config with version 2, superseded by the current version
+func withVersion2Config(t *testing.T) {
+	t.Helper()
+	dir := internal.TempConfigFolder(t)
+
+	configPath := path.Join(dir, "config.toml")
+
+	err := os.WriteFile(configPath, []byte(`
+  version = 2
+  silence_storage_warning = true
+  [config_test]
+  org_id = "version_2_org_id"
   service = "cloud"
 `), 0600)
 	require.NoError(t, err)

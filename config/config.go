@@ -23,7 +23,9 @@ import (
 
 // MaxSupportedVersion is the maximum supported config version available in AtlasCLI.
 const (
-	MaxSupportedVersion = 2
+	// MaxSupportedVersion must ship in lockstep with the version 3 migration in
+	// mongodb-atlas-cli (auth_type user_account → user_account_legacy rename).
+	MaxSupportedVersion = 3
 	versionKey          = "version"
 )
 

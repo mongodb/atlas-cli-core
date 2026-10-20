@@ -69,7 +69,7 @@ func TestHTTPClientFromProfile(t *testing.T) {
 			},
 		},
 		{
-			name: "User Account with valid token",
+			name: "User Account (Authorization Code) with valid token",
 			setupMock: func(m *MockProfileProvider) {
 				token := &auth.Token{
 					AccessToken:  "access-token",
@@ -79,23 +79,22 @@ func TestHTTPClientFromProfile(t *testing.T) {
 				}
 				m.EXPECT().AuthType().Return(config.UserAccount)
 				m.EXPECT().Token().Return(token, nil)
-				m.EXPECT().SetAccessToken("new-access-token").Times(0)   // Won't be called in this test
-				m.EXPECT().SetRefreshToken("new-refresh-token").Times(0) // Won't be called in this test
-				m.EXPECT().Save().Times(0)                               // Won't be called in this test
+				m.EXPECT().ClientID().Return("")
+				m.EXPECT().Service().Return("")
+				m.EXPECT().AuthServerMetadata().Return(nil, nil)
 			},
 			validateFunc: func(t *testing.T, client *http.Client) {
 				t.Helper()
 				require.NotNil(t, client)
-				// Verify that the client has a token transport
-				_, ok := client.Transport.(*tokenTransport)
-				require.True(t, ok, "Expected token transport for User Account auth with token")
+				_, ok := client.Transport.(*authCodeTransport)
+				require.True(t, ok, "Expected auth code transport for User Account auth with token")
 			},
 		},
 		{
-			name: "User Account with nil token - fallback to ServiceAccount",
+			name: "User Account (Authorization Code) with nil token - fallback to ServiceAccount",
 			setupMock: func(m *MockProfileProvider) {
 				m.EXPECT().AuthType().Return(config.UserAccount)
-				m.EXPECT().Token().Return(nil, nil)
+				m.EXPECT().Token().Return(nil, nil).Times(2) // retried in the UserAccountLegacy case before falling through
 				// Falls through to ServiceAccount case
 				m.EXPECT().ServiceAccountToken().Return(nil, nil)
 				m.EXPECT().ClientID().Return("client-id")
@@ -110,9 +109,57 @@ func TestHTTPClientFromProfile(t *testing.T) {
 			},
 		},
 		{
-			name: "User Account with token error",
+			name: "User Account (Authorization Code) with token error",
 			setupMock: func(m *MockProfileProvider) {
 				m.EXPECT().AuthType().Return(config.UserAccount)
+				m.EXPECT().Token().Return(nil, errors.New("token error"))
+			},
+			expectedError: "token error",
+		},
+		{
+			name: "User Account Legacy with valid token",
+			setupMock: func(m *MockProfileProvider) {
+				token := &auth.Token{
+					AccessToken:  "access-token",
+					RefreshToken: "refresh-token",
+					TokenType:    "Bearer",
+					Expiry:       time.Now().Add(time.Hour),
+				}
+				m.EXPECT().AuthType().Return(config.UserAccountLegacy)
+				m.EXPECT().Token().Return(token, nil)
+				m.EXPECT().SetAccessToken("new-access-token").Times(0)   // Won't be called in this test
+				m.EXPECT().SetRefreshToken("new-refresh-token").Times(0) // Won't be called in this test
+				m.EXPECT().Save().Times(0)                               // Won't be called in this test
+			},
+			validateFunc: func(t *testing.T, client *http.Client) {
+				t.Helper()
+				require.NotNil(t, client)
+				// Verify that the client has a token transport
+				_, ok := client.Transport.(*tokenTransport)
+				require.True(t, ok, "Expected token transport for User Account Legacy auth with token")
+			},
+		},
+		{
+			name: "User Account Legacy with nil token - fallback to ServiceAccount",
+			setupMock: func(m *MockProfileProvider) {
+				m.EXPECT().AuthType().Return(config.UserAccountLegacy)
+				m.EXPECT().Token().Return(nil, nil)
+				// Falls through to ServiceAccount case
+				m.EXPECT().ServiceAccountToken().Return(nil, nil)
+				m.EXPECT().ClientID().Return("client-id")
+				m.EXPECT().ClientSecret().Return("client-secret")
+				m.EXPECT().OpsManagerURL().Return("")
+			},
+			validateFunc: func(t *testing.T, client *http.Client) {
+				t.Helper()
+				require.NotNil(t, client)
+				require.NotNil(t, client.Transport)
+			},
+		},
+		{
+			name: "User Account Legacy with token error",
+			setupMock: func(m *MockProfileProvider) {
+				m.EXPECT().AuthType().Return(config.UserAccountLegacy)
 				m.EXPECT().Token().Return(nil, errors.New("token error"))
 			},
 			expectedError: "token error",
@@ -214,7 +261,7 @@ func TestHTTPClientFromProfile_UserAccountTokenRefreshCallback(t *testing.T) {
 	}
 
 	// Set up expectations
-	mockProfile.EXPECT().AuthType().Return(config.UserAccount)
+	mockProfile.EXPECT().AuthType().Return(config.UserAccountLegacy)
 	mockProfile.EXPECT().Token().Return(expiredToken, nil)
 
 	// The callback should be called when token is refreshed
@@ -259,7 +306,7 @@ func TestHTTPClientFromProfile_UserAccountTokenRefreshCallbackError(t *testing.T
 	}
 
 	// Set up expectations
-	mockProfile.EXPECT().AuthType().Return(config.UserAccount)
+	mockProfile.EXPECT().AuthType().Return(config.UserAccountLegacy)
 	mockProfile.EXPECT().Token().Return(token, nil)
 
 	// The callback should handle save errors
@@ -305,7 +352,7 @@ func TestHTTPClientFromProfile_AccessTokenTransportError(t *testing.T) {
 		Expiry:       time.Now().Add(time.Hour),
 	}
 
-	mockProfile.EXPECT().AuthType().Return(config.UserAccount)
+	mockProfile.EXPECT().AuthType().Return(config.UserAccountLegacy)
 	mockProfile.EXPECT().Token().Return(token, nil)
 
 	// We need to temporarily break the config to cause NewAccessTokenTransport to fail

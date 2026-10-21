@@ -17,12 +17,12 @@ package transport
 import (
 	"context"
 	"errors"
-	"fmt"
 	"log/slog"
 	"net/http"
 	"sync"
 	"time"
 
+	"github.com/mongodb/atlas-cli-core/config"
 	"go.mongodb.org/atlas-sdk/v20250312027/auth/code"
 	atlasauth "go.mongodb.org/atlas/auth"
 )
@@ -55,16 +55,33 @@ func NewAuthCodeTransport(profile ProfileProvider, token *atlasauth.Token, base 
 		flow:     flow,
 		metadata: metadata,
 		base:     base,
-		saveToken: func(t *code.Token) error {
-			profile.SetAccessToken(t.AccessToken)
-			profile.SetRefreshToken(t.RefreshToken)
-			profile.SetTokenExpiry(t.Expiry.Format(time.RFC3339))
-			return profile.Save()
+		saveToken: func(t *code.Token, md *code.AuthServerMetadata) error {
+			return SaveUserAccountToken(profile, t, md)
 		},
 		saveMetadata:     profile.SetAuthServerMetadata,
 		clearCredentials: authCodeClearCredentials(profile),
-		loadRefreshToken: profile.RefreshToken,
+		loadRefreshToken: func() string { return config.FreshRefreshToken(profile.Name()) },
 	}, nil
+}
+
+// SaveUserAccountToken persists an Authorization Code token, its expiry, and its
+// issuer binding. It is the single write path for user_account credentials, used
+// by both the refresh transport and the CLI login flow. A failed save is retried
+// once.
+func SaveUserAccountToken(profile ProfileProvider, t *code.Token, metadata *code.AuthServerMetadata) error {
+	profile.SetAccessToken(t.AccessToken)
+	profile.SetRefreshToken(t.RefreshToken)
+	profile.SetTokenExpiry(t.Expiry.Format(time.RFC3339))
+	if metadata != nil {
+		profile.SetAuthServerURL(metadata.Issuer)
+		if err := profile.SetAuthServerMetadata(metadata); err != nil {
+			return err
+		}
+	}
+	if err := profile.Save(); err != nil {
+		return errors.Join(err, profile.Save())
+	}
+	return nil
 }
 
 type authCodeTransport struct {
@@ -74,7 +91,7 @@ type authCodeTransport struct {
 	metadata *code.AuthServerMetadata
 	base     http.RoundTripper
 
-	saveToken        func(*code.Token) error
+	saveToken        func(*code.Token, *code.AuthServerMetadata) error
 	saveMetadata     func(*code.AuthServerMetadata) error
 	clearCredentials func() error
 	loadRefreshToken func() string
@@ -122,7 +139,7 @@ func (tr *authCodeTransport) ensureToken(ctx context.Context) error {
 	}
 	tr.token = token
 
-	return tr.saveToken(token)
+	return tr.saveToken(token, metadata)
 }
 
 // refreshToken retries once with the stored refresh token when it was rotated
@@ -186,23 +203,25 @@ func revokeAuthServerTokens(ctx context.Context, flow *code.Config, metadata *co
 
 // ensureAuthServerMetadata returns the cached metadata, discovering fresh metadata
 // when the cache is missing, expired, or issued by a different authorization server.
+// When discovery fails, stale cached metadata for the same issuer is used.
 func ensureAuthServerMetadata(ctx context.Context, flow *code.Config, metadata *code.AuthServerMetadata, save func(*code.AuthServerMetadata) error) (*code.AuthServerMetadata, error) {
-	if metadata != nil && !metadata.CacheExpiry.IsZero() && metadata.CacheExpiry.After(time.Now()) {
-		if metadata.Issuer != flow.AuthServerURL.String() {
-			return nil, fmt.Errorf("cached issuer %q does not match the configured issuer %q, run `atlas auth login` to re-authenticate", metadata.Issuer, flow.AuthServerURL)
-		}
+	if metadata != nil && metadata.Issuer == flow.AuthServerURL.String() &&
+		(metadata.CacheExpiry.IsZero() || metadata.CacheExpiry.After(time.Now())) {
 		return metadata, nil
 	}
 
 	discovered, _, err := flow.DiscoverAuthServer(ctx)
 	if err != nil {
 		logAuthServerFailure("discovery", err)
+		if metadata != nil && metadata.Issuer == flow.AuthServerURL.String() {
+			return metadata, nil
+		}
 		return nil, err
 	}
 	if save != nil {
-		if err := save(discovered); err != nil {
+		if saveErr := save(discovered); saveErr != nil {
 			// The cache is best-effort; a persistence failure must not block the flow.
-			logAuthServerFailure("discovery", err)
+			logAuthServerFailure("discovery", saveErr)
 		}
 	}
 	return discovered, nil

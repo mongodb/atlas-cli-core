@@ -47,6 +47,7 @@ const (
 	AccessTokenField         = "access_token"
 	RefreshTokenField        = "refresh_token"
 	TokenExpiryField         = "token_expiry" //nolint:gosec // config key, not a credential
+	AuthServerURLField       = "auth_server_url"
 	AuthServerMetadataField  = "auth_server_metadata"
 	ClientIDField            = "client_id"
 	ClientSecretField        = "client_secret"
@@ -164,6 +165,7 @@ func ProfileProperties() []string {
 		AuthServerMetadataField,
 		baseURL,
 		OpsManagerURLField,
+		AuthServerURLField,
 		orgID,
 		output,
 		privateAPIKey,
@@ -414,6 +416,18 @@ func (p *Profile) SetTokenExpiry(v string) {
 	p.Set(TokenExpiryField, v)
 }
 
+// AuthServerURL get the issuer the profile's tokens were issued by.
+func AuthServerURL() string { return Default().AuthServerURL() }
+func (p *Profile) AuthServerURL() string {
+	return p.GetString(AuthServerURLField)
+}
+
+// SetAuthServerURL store the issuer the profile's tokens were issued by.
+func SetAuthServerURL(v string) { Default().SetAuthServerURL(v) }
+func (p *Profile) SetAuthServerURL(v string) {
+	p.Set(AuthServerURLField, v)
+}
+
 // ClientID get configured client ID.
 func ClientID() string { return Default().ClientID() }
 func (p *Profile) ClientID() string {
@@ -487,9 +501,6 @@ func (p *Profile) ServiceAccountToken() (*auth.Token, error) {
 // This method won't verify the token signature, it's only safe to use to get the token claims.
 func AccessTokenSubject() (string, error) { return Default().AccessTokenSubject() }
 func (p *Profile) AccessTokenSubject() (string, error) {
-	if p.AuthType() == UserAccount {
-		return "", errors.New("no access token subject for user_account profiles")
-	}
 	c, err := p.tokenClaims()
 	if err != nil {
 		return "", err
@@ -499,21 +510,18 @@ func (p *Profile) AccessTokenSubject() (string, error) {
 
 func (p *Profile) tokenClaims() (jwt.RegisteredClaims, error) {
 	c := jwt.RegisteredClaims{}
-
-	// user_account tokens are not JWTs: expiry comes from token_expiry (from expires_in).
-	// An unparsable expiry is treated as unset so the token refreshes and is re-persisted.
-	if p.AuthType() == UserAccount {
-		if expiry := p.TokenExpiry(); expiry != "" {
-			if t, err := time.Parse(time.RFC3339, expiry); err == nil {
-				c.ExpiresAt = jwt.NewNumericDate(t)
-			}
-		}
-		return c, nil
-	}
-
 	// ParseUnverified is ok here, only want to make sure is a JWT and to get the claims for a Subject
 	_, _, err := new(jwt.Parser).ParseUnverified(p.AccessToken(), &c)
-	return c, err
+	if err != nil {
+		return c, err
+	}
+	// user_account: token_expiry (from expires_in) is authoritative over the JWT exp.
+	if p.AuthType() == UserAccount && p.TokenExpiry() != "" {
+		if t, err := time.Parse(time.RFC3339, p.TokenExpiry()); err == nil {
+			c.ExpiresAt = jwt.NewNumericDate(t)
+		}
+	}
+	return c, nil
 }
 
 // APIVersion get the default API version.

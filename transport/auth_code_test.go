@@ -76,7 +76,7 @@ func (s *authCodeTestServer) serveRefreshError(errorCode string) {
 
 // newTestAuthCodeTransport builds an authCodeTransport against the TLS test server,
 // bypassing HTTPClientFromProfile, whose OAuth client is fixed to the default transport.
-func newTestAuthCodeTransport(t *testing.T, server *authCodeTestServer, token *atlasauth.Token, saveToken func(*code.Token) error, clearCredentials func() error) *authCodeTransport {
+func newTestAuthCodeTransport(t *testing.T, server *authCodeTestServer, token *atlasauth.Token, saveToken func(*code.Token, *code.AuthServerMetadata) error, clearCredentials func() error) *authCodeTransport {
 	t.Helper()
 
 	flow, err := code.NewConfigWithOptions(server.Client(),
@@ -129,7 +129,7 @@ func TestAuthCodeTransportRefresh(t *testing.T) {
 
 	var saved *code.Token
 	tr := newTestAuthCodeTransport(t, server, expiredAuthCodeToken(),
-		func(token *code.Token) error { saved = token; return nil },
+		func(token *code.Token, _ *code.AuthServerMetadata) error { saved = token; return nil },
 		func() error { t.Error("credentials must not be cleared on successful refresh"); return nil },
 	)
 
@@ -155,7 +155,7 @@ func TestAuthCodeTransportRefreshKeepsUnrotatedRefreshToken(t *testing.T) {
 
 	var saved *code.Token
 	tr := newTestAuthCodeTransport(t, server, expiredAuthCodeToken(),
-		func(token *code.Token) error { saved = token; return nil },
+		func(token *code.Token, _ *code.AuthServerMetadata) error { saved = token; return nil },
 		func() error { t.Error("credentials must not be cleared on successful refresh"); return nil },
 	)
 
@@ -176,7 +176,7 @@ func TestAuthCodeTransportRefreshSerialized(t *testing.T) {
 
 	var saves atomic.Int32
 	tr := newTestAuthCodeTransport(t, server, expiredAuthCodeToken(),
-		func(*code.Token) error { saves.Add(1); return nil },
+		func(*code.Token, *code.AuthServerMetadata) error { saves.Add(1); return nil },
 		func() error { t.Error("credentials must not be cleared on successful refresh"); return nil },
 	)
 
@@ -212,7 +212,10 @@ func TestAuthCodeTransportUnrecoverableRefreshClearsCredentials(t *testing.T) {
 
 	cleared := false
 	tr := newTestAuthCodeTransport(t, server, expiredAuthCodeToken(),
-		func(*code.Token) error { t.Error("token must not be saved on failed refresh"); return nil },
+		func(*code.Token, *code.AuthServerMetadata) error {
+			t.Error("token must not be saved on failed refresh")
+			return nil
+		},
 		func() error { cleared = true; return nil },
 	)
 
@@ -236,7 +239,10 @@ func TestAuthCodeTransportRecoverableRefreshErrorKeepsCredentials(t *testing.T) 
 
 	cleared := false
 	tr := newTestAuthCodeTransport(t, server, expiredAuthCodeToken(),
-		func(*code.Token) error { t.Error("token must not be saved on failed refresh"); return nil },
+		func(*code.Token, *code.AuthServerMetadata) error {
+			t.Error("token must not be saved on failed refresh")
+			return nil
+		},
 		func() error { cleared = true; return nil },
 	)
 
@@ -266,18 +272,46 @@ func TestEnsureAuthServerMetadata(t *testing.T) {
 		assert.Equal(t, 0, int(discoveryCalls.Load()))
 	})
 
-	t.Run("cached metadata issued by another server is rejected", func(t *testing.T) {
+	t.Run("metadata issued by another server is rediscovered", func(t *testing.T) {
+		before := discoveryCalls.Load()
 		flow, err := code.NewConfigWithOptions(server.Client(), code.SetAuthServerURL(server.URL))
 		require.NoError(t, err)
 
+		server.response = func(w http.ResponseWriter, _ *http.Request) {
+			discoveryCalls.Add(1)
+			w.Header().Set("Content-Type", "application/json")
+			w.Header().Set("Cache-Control", "max-age=3600")
+			_, _ = w.Write([]byte(`{"issuer":"` + server.URL + `","authorization_endpoint":"` + server.URL + `/oauth/authorize","token_endpoint":"` + server.URL + `/tokens","revocation_endpoint":"` + server.URL + `/tokens/revoke"}`))
+		}
+
 		metadata := &code.AuthServerMetadata{Issuer: "https://other.example.com", CacheExpiry: time.Now().Add(time.Hour)}
 		result, err := ensureAuthServerMetadata(t.Context(), flow, metadata, nil)
-		require.Error(t, err)
-		assert.Nil(t, result)
-		assert.Contains(t, err.Error(), "does not match the configured issuer")
+		require.NoError(t, err)
+		assert.Equal(t, server.URL, result.Issuer)
+		assert.Equal(t, 1, int(discoveryCalls.Load()-before))
+	})
+
+	t.Run("stale metadata for the same issuer is used when discovery fails", func(t *testing.T) {
+		flow, err := code.NewConfigWithOptions(server.Client(), code.SetAuthServerURL(server.URL))
+		require.NoError(t, err)
+
+		server.response = func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusInternalServerError)
+		}
+
+		stale := &code.AuthServerMetadata{
+			Issuer:                server.URL,
+			AuthorizationEndpoint: server.URL + "/oauth/authorize",
+			TokenEndpoint:         server.URL + "/tokens",
+			CacheExpiry:           time.Now().Add(-time.Hour),
+		}
+		result, err := ensureAuthServerMetadata(t.Context(), flow, stale, nil)
+		require.NoError(t, err)
+		assert.Same(t, stale, result)
 	})
 
 	t.Run("stale metadata is rediscovered and persisted", func(t *testing.T) {
+		before := discoveryCalls.Load()
 		server.response = func(w http.ResponseWriter, _ *http.Request) {
 			discoveryCalls.Add(1)
 			w.Header().Set("Content-Type", "application/json")
@@ -297,7 +331,7 @@ func TestEnsureAuthServerMetadata(t *testing.T) {
 		assert.Equal(t, server.URL+"/tokens", result.TokenEndpoint)
 		assert.False(t, result.CacheExpiry.IsZero())
 		assert.Same(t, result, saved, "the discovered metadata must be persisted")
-		assert.Equal(t, 1, int(discoveryCalls.Load()))
+		assert.Equal(t, 1, int(discoveryCalls.Load()-before))
 	})
 }
 
@@ -370,7 +404,7 @@ func TestAuthCodeTransportRefreshAfterRotation(t *testing.T) {
 	var saved *code.Token
 	cleared := false
 	tr := newTestAuthCodeTransport(t, server, expiredAuthCodeToken(),
-		func(token *code.Token) error { saved = token; return nil },
+		func(token *code.Token, _ *code.AuthServerMetadata) error { saved = token; return nil },
 		func() error { cleared = true; return nil },
 	)
 	tr.loadRefreshToken = func() string { return "rotated-refresh-token" }

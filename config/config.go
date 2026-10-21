@@ -58,6 +58,16 @@ func LoadAtlasCLIConfig() (*Profile, error) {
 	return LoadAtlasCLIConfigWithVersion(MaxSupportedVersion)
 }
 
+// FreshRefreshToken reads the profile's stored refresh token from a new store,
+// bypassing this process's startup snapshot. It returns "" when it cannot be read.
+func FreshRefreshToken(profileName string) string {
+	store, err := NewDefaultStore()
+	if err != nil {
+		return ""
+	}
+	return NewProfile(profileName, store).RefreshToken()
+}
+
 // LoadAtlasCLIConfigWithVersion loads configuration with validation for specified
 // version. The expectedVersion parameter enforces compatibility by rejecting
 // configs that are newer or older than expected.

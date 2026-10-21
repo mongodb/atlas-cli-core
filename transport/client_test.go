@@ -80,6 +80,7 @@ func TestHTTPClientFromProfile(t *testing.T) {
 				m.EXPECT().AuthType().Return(config.UserAccount)
 				m.EXPECT().Token().Return(token, nil)
 				m.EXPECT().Service().Return("")
+				m.EXPECT().AuthServerURL().Return("")
 				m.EXPECT().AuthServerMetadata().Return(nil, nil)
 			},
 			validateFunc: func(t *testing.T, client *http.Client) {

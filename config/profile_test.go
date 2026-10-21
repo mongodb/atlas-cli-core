@@ -488,42 +488,44 @@ func TestProfile_Token_UserAccount(t *testing.T) {
 		exp := time.Now().Add(time.Hour).Truncate(time.Second)
 		p := NewProfile("test", NewInMemoryStore())
 		p.SetAuthType(UserAccount)
-		p.SetAccessToken("opaque-access-token")
+		p.SetAccessToken(jwtWithExpiry(t, exp))
 		p.SetRefreshToken("refresh-token")
 		p.SetTokenExpiry(exp.Format(time.RFC3339))
 
 		tok, err := p.Token()
 		require.NoError(t, err)
 		require.NotNil(t, tok)
-		assert.Equal(t, "opaque-access-token", tok.AccessToken)
+		assert.Equal(t, p.AccessToken(), tok.AccessToken)
 		assert.Equal(t, "refresh-token", tok.RefreshToken)
 		assert.Equal(t, "Bearer", tok.TokenType)
 		assert.WithinDuration(t, exp, tok.Expiry, time.Second)
 	})
 
-	t.Run("returns a zero expiry when token_expiry is unparsable", func(t *testing.T) {
+	t.Run("falls back to the JWT expiry when token_expiry is unparsable", func(t *testing.T) {
+		exp := time.Now().Add(time.Hour).Truncate(time.Second)
 		p := NewProfile("test", NewInMemoryStore())
 		p.SetAuthType(UserAccount)
-		p.SetAccessToken("opaque-access-token")
+		p.SetAccessToken(jwtWithExpiry(t, exp))
 		p.SetRefreshToken("refresh-token")
 		p.SetTokenExpiry("not-a-time")
 
 		tok, err := p.Token()
 		require.NoError(t, err)
 		require.NotNil(t, tok)
-		assert.True(t, tok.Expiry.IsZero())
+		assert.WithinDuration(t, exp, tok.Expiry, time.Second)
 	})
 
-	t.Run("returns a zero expiry when token_expiry is unset", func(t *testing.T) {
+	t.Run("falls back to the JWT expiry when token_expiry is unset", func(t *testing.T) {
+		exp := time.Now().Add(time.Hour).Truncate(time.Second)
 		p := NewProfile("test", NewInMemoryStore())
 		p.SetAuthType(UserAccount)
-		p.SetAccessToken("opaque-access-token")
+		p.SetAccessToken(jwtWithExpiry(t, exp))
 		p.SetRefreshToken("refresh-token")
 
 		tok, err := p.Token()
 		require.NoError(t, err)
 		require.NotNil(t, tok)
-		assert.True(t, tok.Expiry.IsZero())
+		assert.WithinDuration(t, exp, tok.Expiry, time.Second)
 	})
 }
 
@@ -590,10 +592,21 @@ func TestProfile_AuthServerMetadata(t *testing.T) {
 func TestProfile_AccessTokenSubject_UserAccount(t *testing.T) {
 	p := NewProfile("test", NewInMemoryStore())
 	p.SetAuthType(UserAccount)
-	p.SetAccessToken("opaque-access-token")
+	p.SetAccessToken(jwtWithSubject(t, "user-123"))
 	p.SetRefreshToken("refresh-token")
 
 	subject, err := p.AccessTokenSubject()
-	require.Error(t, err)
-	assert.Empty(t, subject)
+	require.NoError(t, err)
+	assert.Equal(t, "user-123", subject)
+}
+
+func jwtWithSubject(t *testing.T, subject string) string {
+	t.Helper()
+	claims := jwt.RegisteredClaims{
+		Subject:   subject,
+		ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour)),
+	}
+	s, err := jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString([]byte("test-secret"))
+	require.NoError(t, err)
+	return s
 }

@@ -73,21 +73,23 @@ func FlowWithConfig(c ServiceGetter, client *http.Client, version string) (*auth
 // Code + PKCE flow.
 type AuthServerGetter interface {
 	Service() string
+	AuthServerURL() string
 }
 
 // FlowForAuthServer creates the Authorization Code + PKCE config for the dedicated
 // Authorization Server. The client ID is always the registered public client,
 // shared across environments: client_id is the service-account profile field.
-// The issuer comes from MONGODB_ATLAS_AUTH_SERVER_URL, defaulting per service.
+// Issuer precedence: the issuer the profile's tokens were issued by (auth_server_url),
+// then MONGODB_ATLAS_AUTH_SERVER_URL, then the gov default.
 func FlowForAuthServer(c AuthServerGetter, client *http.Client, version string) (*code.Config, error) {
 	authOpts := []code.ConfigOpt{
 		code.SetUserAgent(config.UserAgent(version)),
 		code.SetClientID(authCodeClientID),
 		code.SetScopes([]string{"atlas"}),
 	}
-	// The SDK applies MONGODB_ATLAS_AUTH_SERVER_URL by default; only default the
-	// gov issuer when the environment variable is unset.
-	if os.Getenv(authServerURLEnvVar) == "" && c.Service() == config.CloudGovService {
+	if issuer := c.AuthServerURL(); issuer != "" {
+		authOpts = append(authOpts, code.SetAuthServerURL(issuer))
+	} else if os.Getenv(authServerURLEnvVar) == "" && c.Service() == config.CloudGovService {
 		authOpts = append(authOpts, code.SetAuthServerURL(govAuthServerURL))
 	}
 

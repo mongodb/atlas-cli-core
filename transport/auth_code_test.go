@@ -102,6 +102,7 @@ func newTestAuthCodeTransport(t *testing.T, server *authCodeTestServer, token *a
 		saveToken:        saveToken,
 		saveMetadata:     func(*code.AuthServerMetadata) error { return nil },
 		clearCredentials: clearCredentials,
+		loadRefreshToken: func() string { return token.RefreshToken },
 	}
 }
 
@@ -337,4 +338,81 @@ func TestRevokeUserAccountToken(t *testing.T) {
 		err := RevokeUserAccountToken(t.Context(), mockProfile, testVersion)
 		require.NoError(t, err)
 	})
+}
+
+// TestAuthCodeTransportRefreshAfterRotation verifies a refresh token rotated by
+// another process is retried with the stored value instead of clearing credentials.
+func TestAuthCodeTransportRefreshAfterRotation(t *testing.T) {
+	server := newAuthCodeTestServer(t)
+	rotated := &code.Token{
+		AccessToken:  "rotated-access-token",
+		RefreshToken: "rotated-refresh-token",
+		TokenType:    "Bearer",
+		Expiry:       time.Now().Add(time.Hour),
+	}
+
+	var usedRefreshTokens []string
+	server.response = func(w http.ResponseWriter, r *http.Request) {
+		if !assert.NoError(t, r.ParseForm()) {
+			return
+		}
+		usedRefreshTokens = append(usedRefreshTokens, r.Form.Get("refresh_token"))
+		if r.Form.Get("refresh_token") == "old-refresh-token" {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = w.Write([]byte(`{"error":"invalid_grant"}`))
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"access_token":"` + rotated.AccessToken + `","token_type":"Bearer","expires_in":3600,"refresh_token":"` + rotated.RefreshToken + `"}`))
+	}
+
+	var saved *code.Token
+	cleared := false
+	tr := newTestAuthCodeTransport(t, server, expiredAuthCodeToken(),
+		func(token *code.Token) error { saved = token; return nil },
+		func() error { cleared = true; return nil },
+	)
+	tr.loadRefreshToken = func() string { return "rotated-refresh-token" }
+
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, "https://example.mongodb.com", http.NoBody)
+	require.NoError(t, err)
+	resp, err := tr.RoundTrip(req)
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+
+	assert.Equal(t, []string{"old-refresh-token", "rotated-refresh-token"}, usedRefreshTokens)
+	assert.False(t, cleared, "credentials must not be cleared when another process rotated the token")
+	require.NotNil(t, saved)
+	assert.Equal(t, rotated.AccessToken, saved.AccessToken)
+}
+
+// TestRevokeAuthServerTokensPartialFailure verifies the access token is revoked
+// even when the refresh token revocation fails.
+func TestRevokeAuthServerTokensPartialFailure(t *testing.T) {
+	server := newAuthCodeTestServer(t)
+
+	var revoked []string
+	server.response = func(w http.ResponseWriter, r *http.Request) {
+		if !assert.NoError(t, r.ParseForm()) {
+			return
+		}
+		if r.Form.Get("token_type_hint") == "refresh_token" {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		revoked = append(revoked, r.Form.Get("token_type_hint")+":"+r.Form.Get("token"))
+		w.WriteHeader(http.StatusOK)
+	}
+
+	flow, err := code.NewConfigWithOptions(server.Client(),
+		code.SetAuthServerURL(server.URL),
+		code.SetClientID("test-client"),
+		code.SetScopes([]string{"atlas"}),
+	)
+	require.NoError(t, err)
+
+	err = revokeAuthServerTokens(t.Context(), flow, server.metadata(), "access-token", "refresh-token")
+	require.Error(t, err)
+	assert.Equal(t, []string{"access_token:access-token"}, revoked)
 }

@@ -63,6 +63,7 @@ func NewAuthCodeTransport(profile ProfileProvider, token *atlasauth.Token, base 
 		},
 		saveMetadata:     profile.SetAuthServerMetadata,
 		clearCredentials: authCodeClearCredentials(profile),
+		loadRefreshToken: profile.RefreshToken,
 	}, nil
 }
 
@@ -76,6 +77,7 @@ type authCodeTransport struct {
 	saveToken        func(*code.Token) error
 	saveMetadata     func(*code.AuthServerMetadata) error
 	clearCredentials func() error
+	loadRefreshToken func() string
 }
 
 func (tr *authCodeTransport) RoundTrip(req *http.Request) (*http.Response, error) {
@@ -108,7 +110,7 @@ func (tr *authCodeTransport) ensureToken(ctx context.Context) error {
 	}
 	tr.metadata = metadata
 
-	token, _, err := tr.flow.RefreshAccessToken(ctx, metadata, tr.token.RefreshToken)
+	token, err := tr.refreshToken(ctx, metadata)
 	if err != nil {
 		logAuthServerFailure("refresh", err)
 		if isUnrecoverableRefreshError(err) {
@@ -118,13 +120,27 @@ func (tr *authCodeTransport) ensureToken(ctx context.Context) error {
 		}
 		return err
 	}
-	// Retain the stored refresh token when the server does not rotate it.
-	if token.RefreshToken == "" {
-		token.RefreshToken = tr.token.RefreshToken
-	}
 	tr.token = token
 
 	return tr.saveToken(token)
+}
+
+// refreshToken retries once with the stored refresh token when it was rotated
+// by another process. The refresh token is retained when the server does not
+// rotate it.
+func (tr *authCodeTransport) refreshToken(ctx context.Context, metadata *code.AuthServerMetadata) (*code.Token, error) {
+	used := tr.token.RefreshToken
+	token, _, err := tr.flow.RefreshAccessToken(ctx, metadata, used)
+	if err != nil && isUnrecoverableRefreshError(err) {
+		if stored := tr.loadRefreshToken(); stored != "" && stored != used {
+			used = stored
+			token, _, err = tr.flow.RefreshAccessToken(ctx, metadata, used)
+		}
+	}
+	if err == nil && token != nil && token.RefreshToken == "" {
+		token.RefreshToken = used
+	}
+	return token, err
 }
 
 // RevokeUserAccountToken revokes the stored Authorization Code tokens at the
@@ -152,19 +168,20 @@ func RevokeUserAccountToken(ctx context.Context, profile ProfileProvider, versio
 }
 
 func revokeAuthServerTokens(ctx context.Context, flow *code.Config, metadata *code.AuthServerMetadata, accessToken, refreshToken string) error {
+	var errs []error
 	if refreshToken != "" {
 		if _, err := flow.RevokeAuthServerToken(ctx, metadata, refreshToken, "refresh_token"); err != nil {
 			logAuthServerFailure("revocation", err)
-			return err
+			errs = append(errs, err)
 		}
 	}
 	if accessToken != "" {
 		if _, err := flow.RevokeAuthServerToken(ctx, metadata, accessToken, "access_token"); err != nil {
 			logAuthServerFailure("revocation", err)
-			return err
+			errs = append(errs, err)
 		}
 	}
-	return nil
+	return errors.Join(errs...)
 }
 
 // ensureAuthServerMetadata returns the cached metadata, discovering fresh metadata

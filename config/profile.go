@@ -487,6 +487,9 @@ func (p *Profile) ServiceAccountToken() (*auth.Token, error) {
 // This method won't verify the token signature, it's only safe to use to get the token claims.
 func AccessTokenSubject() (string, error) { return Default().AccessTokenSubject() }
 func (p *Profile) AccessTokenSubject() (string, error) {
+	if p.AuthType() == UserAccount {
+		return "", errors.New("no access token subject for user_account profiles")
+	}
 	c, err := p.tokenClaims()
 	if err != nil {
 		return "", err
@@ -498,13 +501,12 @@ func (p *Profile) tokenClaims() (jwt.RegisteredClaims, error) {
 	c := jwt.RegisteredClaims{}
 
 	// user_account tokens are not JWTs: expiry comes from token_expiry (from expires_in).
+	// An unparsable expiry is treated as unset so the token refreshes and is re-persisted.
 	if p.AuthType() == UserAccount {
 		if expiry := p.TokenExpiry(); expiry != "" {
-			t, err := time.Parse(time.RFC3339, expiry)
-			if err != nil {
-				return c, fmt.Errorf("invalid %s: %w", TokenExpiryField, err)
+			if t, err := time.Parse(time.RFC3339, expiry); err == nil {
+				c.ExpiresAt = jwt.NewNumericDate(t)
 			}
-			c.ExpiresAt = jwt.NewNumericDate(t)
 		}
 		return c, nil
 	}

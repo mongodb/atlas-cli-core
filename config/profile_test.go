@@ -501,7 +501,7 @@ func TestProfile_Token_UserAccount(t *testing.T) {
 		assert.WithinDuration(t, exp, tok.Expiry, time.Second)
 	})
 
-	t.Run("returns an error on an invalid token_expiry", func(t *testing.T) {
+	t.Run("returns a zero expiry when token_expiry is unparsable", func(t *testing.T) {
 		p := NewProfile("test", NewInMemoryStore())
 		p.SetAuthType(UserAccount)
 		p.SetAccessToken("opaque-access-token")
@@ -509,8 +509,9 @@ func TestProfile_Token_UserAccount(t *testing.T) {
 		p.SetTokenExpiry("not-a-time")
 
 		tok, err := p.Token()
-		require.Error(t, err)
-		assert.Nil(t, tok)
+		require.NoError(t, err)
+		require.NotNil(t, tok)
+		assert.True(t, tok.Expiry.IsZero())
 	})
 
 	t.Run("returns a zero expiry when token_expiry is unset", func(t *testing.T) {
@@ -584,4 +585,15 @@ func TestProfile_AuthServerMetadata(t *testing.T) {
 		require.NoError(t, p.SetAuthServerMetadata(nil))
 		assert.Empty(t, p.GetString(AuthServerMetadataField))
 	})
+}
+
+func TestProfile_AccessTokenSubject_UserAccount(t *testing.T) {
+	p := NewProfile("test", NewInMemoryStore())
+	p.SetAuthType(UserAccount)
+	p.SetAccessToken("opaque-access-token")
+	p.SetRefreshToken("refresh-token")
+
+	subject, err := p.AccessTokenSubject()
+	require.Error(t, err)
+	assert.Empty(t, subject)
 }

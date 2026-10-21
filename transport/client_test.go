@@ -79,7 +79,6 @@ func TestHTTPClientFromProfile(t *testing.T) {
 				}
 				m.EXPECT().AuthType().Return(config.UserAccount)
 				m.EXPECT().Token().Return(token, nil)
-				m.EXPECT().ClientID().Return("")
 				m.EXPECT().Service().Return("")
 				m.EXPECT().AuthServerMetadata().Return(nil, nil)
 			},
@@ -91,21 +90,15 @@ func TestHTTPClientFromProfile(t *testing.T) {
 			},
 		},
 		{
-			name: "User Account (Authorization Code) with nil token - fallback to ServiceAccount",
+			name: "User Account (Authorization Code) with nil token returns unauthenticated client",
 			setupMock: func(m *MockProfileProvider) {
 				m.EXPECT().AuthType().Return(config.UserAccount)
-				m.EXPECT().Token().Return(nil, nil).Times(2) // retried in the UserAccountLegacy case before falling through
-				// Falls through to ServiceAccount case
-				m.EXPECT().ServiceAccountToken().Return(nil, nil)
-				m.EXPECT().ClientID().Return("client-id")
-				m.EXPECT().ClientSecret().Return("client-secret")
-				m.EXPECT().OpsManagerURL().Return("")
+				m.EXPECT().Token().Return(nil, nil)
 			},
 			validateFunc: func(t *testing.T, client *http.Client) {
 				t.Helper()
 				require.NotNil(t, client)
-				// Should create a service account client
-				require.NotNil(t, client.Transport)
+				assert.Same(t, httpTransport, client.Transport)
 			},
 		},
 		{
@@ -140,20 +133,15 @@ func TestHTTPClientFromProfile(t *testing.T) {
 			},
 		},
 		{
-			name: "User Account Legacy with nil token - fallback to ServiceAccount",
+			name: "User Account Legacy with nil token returns unauthenticated client",
 			setupMock: func(m *MockProfileProvider) {
 				m.EXPECT().AuthType().Return(config.UserAccountLegacy)
 				m.EXPECT().Token().Return(nil, nil)
-				// Falls through to ServiceAccount case
-				m.EXPECT().ServiceAccountToken().Return(nil, nil)
-				m.EXPECT().ClientID().Return("client-id")
-				m.EXPECT().ClientSecret().Return("client-secret")
-				m.EXPECT().OpsManagerURL().Return("")
 			},
 			validateFunc: func(t *testing.T, client *http.Client) {
 				t.Helper()
 				require.NotNil(t, client)
-				require.NotNil(t, client.Transport)
+				assert.Same(t, httpTransport, client.Transport)
 			},
 		},
 		{

@@ -17,6 +17,7 @@ package transport
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"sync"
@@ -43,8 +44,14 @@ func NewAuthCodeTransport(profile ProfileProvider, token *atlasauth.Token, base 
 		return nil, err
 	}
 
+	codeToken := authCodeToken(token)
+	if codeToken.Expiry.IsZero() {
+		// A missing expiry is treated as expired so the token refreshes.
+		codeToken.Expiry = time.Now().Add(-time.Minute)
+	}
+
 	return &authCodeTransport{
-		token:    authCodeToken(token),
+		token:    codeToken,
 		flow:     flow,
 		metadata: metadata,
 		base:     base,
@@ -120,14 +127,11 @@ func (tr *authCodeTransport) ensureToken(ctx context.Context) error {
 	return tr.saveToken(token)
 }
 
-// RevokeUserAccountToken revokes the stored Authorization Code access token at the
-// discovered revocation endpoint, for logout.
+// RevokeUserAccountToken revokes the stored Authorization Code tokens at the
+// discovered revocation endpoint, for logout. The refresh token is revoked first:
+// it is the long-lived credential.
 func RevokeUserAccountToken(ctx context.Context, profile ProfileProvider, version string) error {
-	token, err := profile.Token()
-	if err != nil {
-		return err
-	}
-	if token == nil || token.AccessToken == "" {
+	if profile.AccessToken() == "" && profile.RefreshToken() == "" {
 		return nil
 	}
 
@@ -144,17 +148,32 @@ func RevokeUserAccountToken(ctx context.Context, profile ProfileProvider, versio
 		return err
 	}
 
-	if _, err := flow.RevokeAuthServerToken(ctx, metadata, token.AccessToken, "access_token"); err != nil {
-		logAuthServerFailure("revocation", err)
-		return err
+	return revokeAuthServerTokens(ctx, flow, metadata, profile.AccessToken(), profile.RefreshToken())
+}
+
+func revokeAuthServerTokens(ctx context.Context, flow *code.Config, metadata *code.AuthServerMetadata, accessToken, refreshToken string) error {
+	if refreshToken != "" {
+		if _, err := flow.RevokeAuthServerToken(ctx, metadata, refreshToken, "refresh_token"); err != nil {
+			logAuthServerFailure("revocation", err)
+			return err
+		}
+	}
+	if accessToken != "" {
+		if _, err := flow.RevokeAuthServerToken(ctx, metadata, accessToken, "access_token"); err != nil {
+			logAuthServerFailure("revocation", err)
+			return err
+		}
 	}
 	return nil
 }
 
 // ensureAuthServerMetadata returns the cached metadata, discovering fresh metadata
-// when the cache is missing or expired.
+// when the cache is missing, expired, or issued by a different authorization server.
 func ensureAuthServerMetadata(ctx context.Context, flow *code.Config, metadata *code.AuthServerMetadata, save func(*code.AuthServerMetadata) error) (*code.AuthServerMetadata, error) {
 	if metadata != nil && !metadata.CacheExpiry.IsZero() && metadata.CacheExpiry.After(time.Now()) {
+		if metadata.Issuer != flow.AuthServerURL.String() {
+			return nil, fmt.Errorf("cached issuer %q does not match the configured issuer %q, run `atlas auth login` to re-authenticate", metadata.Issuer, flow.AuthServerURL)
+		}
 		return metadata, nil
 	}
 

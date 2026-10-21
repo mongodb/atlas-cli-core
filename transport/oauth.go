@@ -32,7 +32,6 @@ const (
 
 	authServerURLEnvVar = "MONGODB_ATLAS_AUTH_SERVER_URL"
 	// authCodeClientID is the registered public client ID, used across environments.
-	// MONGODB_ATLAS_CLIENT_ID is deliberately not honored: it is the service-account client ID variable.
 	authCodeClientID = "https://mongodb.com/products/tools/atlas-cli"
 	// govAuthServerURL is the Authorization Server issuer for the Government service.
 	govAuthServerURL = "https://authorize.mongodbgov.com"
@@ -74,21 +73,16 @@ func FlowWithConfig(c ServiceGetter, client *http.Client, version string) (*auth
 // Code + PKCE flow.
 type AuthServerGetter interface {
 	Service() string
-	ClientID() string
 }
 
 // FlowForAuthServer creates the Authorization Code + PKCE config for the dedicated
-// Authorization Server. It intentionally does not read OpsManagerURL or AccountURL;
-// the issuer comes from MONGODB_ATLAS_AUTH_SERVER_URL, defaulting per service.
+// Authorization Server. The client ID is always the registered public client,
+// shared across environments: client_id is the service-account profile field.
+// The issuer comes from MONGODB_ATLAS_AUTH_SERVER_URL, defaulting per service.
 func FlowForAuthServer(c AuthServerGetter, client *http.Client, version string) (*code.Config, error) {
-	id := authCodeClientID
-	if c.ClientID() != "" {
-		id = c.ClientID()
-	}
-
 	authOpts := []code.ConfigOpt{
 		code.SetUserAgent(config.UserAgent(version)),
-		code.SetClientID(id),
+		code.SetClientID(authCodeClientID),
 		code.SetScopes([]string{"atlas"}),
 	}
 	// The SDK applies MONGODB_ATLAS_AUTH_SERVER_URL by default; only default the

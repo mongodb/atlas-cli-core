@@ -28,35 +28,46 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.mongodb.org/atlas-sdk/v20250312027/auth/code"
 	atlasauth "go.mongodb.org/atlas/auth"
+	"go.uber.org/mock/gomock"
 )
 
 // authCodeTestServer is a TLS authorization server serving discovery and token responses.
 type authCodeTestServer struct {
 	*httptest.Server
 	tokenCalls atomic.Int32
-	response   func(w http.ResponseWriter)
+	response   func(w http.ResponseWriter, r *http.Request)
 }
 
 func newAuthCodeTestServer(t *testing.T) *authCodeTestServer {
 	t.Helper()
 	server := &authCodeTestServer{}
-	server.Server = httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	server.Server = httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		server.tokenCalls.Add(1)
-		server.response(w)
+		server.response(w, r)
 	}))
 	t.Cleanup(server.Close)
 	return server
 }
 
+func (s *authCodeTestServer) metadata() *code.AuthServerMetadata {
+	return &code.AuthServerMetadata{
+		Issuer:                s.URL,
+		AuthorizationEndpoint: s.URL + "/oauth/authorize",
+		TokenEndpoint:         s.URL + "/tokens",
+		RevocationEndpoint:    s.URL + "/tokens/revoke",
+		CacheExpiry:           time.Now().Add(time.Hour),
+	}
+}
+
 func (s *authCodeTestServer) serveRefreshToken(accessToken, refreshToken string) {
-	s.response = func(w http.ResponseWriter) {
+	s.response = func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"access_token":"` + accessToken + `","token_type":"Bearer","expires_in":3600,"refresh_token":"` + refreshToken + `"}`))
 	}
 }
 
 func (s *authCodeTestServer) serveRefreshError(errorCode string) {
-	s.response = func(w http.ResponseWriter) {
+	s.response = func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
 		_, _ = w.Write([]byte(`{"error":"` + errorCode + `","error_description":"mock failure"}`))
@@ -254,8 +265,19 @@ func TestEnsureAuthServerMetadata(t *testing.T) {
 		assert.Equal(t, 0, int(discoveryCalls.Load()))
 	})
 
+	t.Run("cached metadata issued by another server is rejected", func(t *testing.T) {
+		flow, err := code.NewConfigWithOptions(server.Client(), code.SetAuthServerURL(server.URL))
+		require.NoError(t, err)
+
+		metadata := &code.AuthServerMetadata{Issuer: "https://other.example.com", CacheExpiry: time.Now().Add(time.Hour)}
+		result, err := ensureAuthServerMetadata(t.Context(), flow, metadata, nil)
+		require.Error(t, err)
+		assert.Nil(t, result)
+		assert.Contains(t, err.Error(), "does not match the configured issuer")
+	})
+
 	t.Run("stale metadata is rediscovered and persisted", func(t *testing.T) {
-		server.response = func(w http.ResponseWriter) {
+		server.response = func(w http.ResponseWriter, _ *http.Request) {
 			discoveryCalls.Add(1)
 			w.Header().Set("Content-Type", "application/json")
 			w.Header().Set("Cache-Control", "max-age=3600")
@@ -275,5 +297,44 @@ func TestEnsureAuthServerMetadata(t *testing.T) {
 		assert.False(t, result.CacheExpiry.IsZero())
 		assert.Same(t, result, saved, "the discovered metadata must be persisted")
 		assert.Equal(t, 1, int(discoveryCalls.Load()))
+	})
+}
+
+func TestRevokeUserAccountToken(t *testing.T) {
+	t.Run("revokes the refresh token before the access token", func(t *testing.T) {
+		server := newAuthCodeTestServer(t)
+
+		var revoked []string
+		server.response = func(w http.ResponseWriter, r *http.Request) {
+			assert.NoError(t, r.ParseForm())
+			if r.ParseForm() != nil {
+				return
+			}
+			revoked = append(revoked, r.Form.Get("token_type_hint")+":"+r.Form.Get("token"))
+			w.WriteHeader(http.StatusOK)
+		}
+
+		flow, err := code.NewConfigWithOptions(server.Client(),
+			code.SetAuthServerURL(server.URL),
+			code.SetClientID("test-client"),
+			code.SetScopes([]string{"atlas"}),
+		)
+		require.NoError(t, err)
+
+		err = revokeAuthServerTokens(t.Context(), flow, server.metadata(), "access-token", "refresh-token")
+		require.NoError(t, err)
+		assert.Equal(t, []string{"refresh_token:refresh-token", "access_token:access-token"}, revoked)
+	})
+
+	t.Run("without tokens it is a no-op", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		mockProfile := NewMockProfileProvider(ctrl)
+		mockProfile.EXPECT().AccessToken().Return("")
+		mockProfile.EXPECT().RefreshToken().Return("")
+
+		err := RevokeUserAccountToken(t.Context(), mockProfile, testVersion)
+		require.NoError(t, err)
 	})
 }

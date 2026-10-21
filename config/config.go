@@ -112,7 +112,7 @@ func verifyConfigVersion(expectedVersion int64, s Store) error {
 	// If version is less than than expectedVersion, the AtlasCLI is outdated.
 	if version < expectedVersion {
 		// Scenario 3: User upgrades plugin but not AtlasCLI, which does not support expected configuration version. AtlasCLI should be updated.
-		return fmt.Errorf("config version %d is older than expected version %d. Please upgrade to a newer version of AtlasCLI", version, expectedVersion)
+		return fmt.Errorf("config version %d is older than expected version %d. Please upgrade to a newer version of AtlasCLI and run any `atlas` command to migrate your config", version, expectedVersion)
 	}
 
 	return nil

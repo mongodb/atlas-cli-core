@@ -42,6 +42,20 @@ func (m *MockProfileProvider) EXPECT() *MockProfileProviderMockRecorder {
 	return m.recorder
 }
 
+// AccessToken mocks base method.
+func (m *MockProfileProvider) AccessToken() string {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "AccessToken")
+	ret0, _ := ret[0].(string)
+	return ret0
+}
+
+// AccessToken indicates an expected call of AccessToken.
+func (mr *MockProfileProviderMockRecorder) AccessToken() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AccessToken", reflect.TypeOf((*MockProfileProvider)(nil).AccessToken))
+}
+
 // AuthServerMetadata mocks base method.
 func (m *MockProfileProvider) AuthServerMetadata() (*code.AuthServerMetadata, error) {
 	m.ctrl.T.Helper()
@@ -139,6 +153,20 @@ func (m *MockProfileProvider) PublicAPIKey() string {
 func (mr *MockProfileProviderMockRecorder) PublicAPIKey() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PublicAPIKey", reflect.TypeOf((*MockProfileProvider)(nil).PublicAPIKey))
+}
+
+// RefreshToken mocks base method.
+func (m *MockProfileProvider) RefreshToken() string {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "RefreshToken")
+	ret0, _ := ret[0].(string)
+	return ret0
+}
+
+// RefreshToken indicates an expected call of RefreshToken.
+func (mr *MockProfileProviderMockRecorder) RefreshToken() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RefreshToken", reflect.TypeOf((*MockProfileProvider)(nil).RefreshToken))
 }
 
 // Save mocks base method.

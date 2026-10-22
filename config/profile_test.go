@@ -26,6 +26,7 @@ import (
 	"github.com/mongodb/atlas-cli-core/mocks"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.mongodb.org/atlas-sdk/v20250312027/auth/code"
 	"go.uber.org/mock/gomock"
 )
 
@@ -480,4 +481,132 @@ func TestProfile_ServiceAccountToken(t *testing.T) {
 		assert.Empty(t, tok.RefreshToken, "service account tokens have no refresh token")
 		assert.WithinDuration(t, exp, tok.Expiry, time.Second)
 	})
+}
+
+func TestProfile_Token_UserAccount(t *testing.T) {
+	t.Run("returns token with expiry from token_expiry", func(t *testing.T) {
+		exp := time.Now().Add(time.Hour).Truncate(time.Second)
+		p := NewProfile("test", NewInMemoryStore())
+		p.SetAuthType(UserAccount)
+		p.SetAccessToken(jwtWithExpiry(t, exp))
+		p.SetRefreshToken("refresh-token")
+		p.SetTokenExpiry(exp.Format(time.RFC3339))
+
+		tok, err := p.Token()
+		require.NoError(t, err)
+		require.NotNil(t, tok)
+		assert.Equal(t, p.AccessToken(), tok.AccessToken)
+		assert.Equal(t, "refresh-token", tok.RefreshToken)
+		assert.Equal(t, "Bearer", tok.TokenType)
+		assert.WithinDuration(t, exp, tok.Expiry, time.Second)
+	})
+
+	t.Run("falls back to the JWT expiry when token_expiry is unparsable", func(t *testing.T) {
+		exp := time.Now().Add(time.Hour).Truncate(time.Second)
+		p := NewProfile("test", NewInMemoryStore())
+		p.SetAuthType(UserAccount)
+		p.SetAccessToken(jwtWithExpiry(t, exp))
+		p.SetRefreshToken("refresh-token")
+		p.SetTokenExpiry("not-a-time")
+
+		tok, err := p.Token()
+		require.NoError(t, err)
+		require.NotNil(t, tok)
+		assert.WithinDuration(t, exp, tok.Expiry, time.Second)
+	})
+
+	t.Run("falls back to the JWT expiry when token_expiry is unset", func(t *testing.T) {
+		exp := time.Now().Add(time.Hour).Truncate(time.Second)
+		p := NewProfile("test", NewInMemoryStore())
+		p.SetAuthType(UserAccount)
+		p.SetAccessToken(jwtWithExpiry(t, exp))
+		p.SetRefreshToken("refresh-token")
+
+		tok, err := p.Token()
+		require.NoError(t, err)
+		require.NotNil(t, tok)
+		assert.WithinDuration(t, exp, tok.Expiry, time.Second)
+	})
+}
+
+func TestProfile_Token_UserAccountLegacy(t *testing.T) {
+	t.Run("returns token with expiry parsed from the access token JWT", func(t *testing.T) {
+		exp := time.Now().Add(45 * time.Minute).Truncate(time.Second)
+		p := NewProfile("test", NewInMemoryStore())
+		p.SetAuthType(UserAccountLegacy)
+		p.SetAccessToken(jwtWithExpiry(t, exp))
+		p.SetRefreshToken("refresh-token")
+
+		tok, err := p.Token()
+		require.NoError(t, err)
+		require.NotNil(t, tok)
+		assert.WithinDuration(t, exp, tok.Expiry, time.Second)
+	})
+}
+
+func TestProfile_AuthServerMetadata(t *testing.T) {
+	t.Run("roundtrips metadata and its cache expiry", func(t *testing.T) {
+		p := NewProfile("test", NewInMemoryStore())
+		metadata := &code.AuthServerMetadata{ //nolint:gosec // endpoint URLs, not credentials
+			Issuer:                "https://authorize.mongodb.com",
+			AuthorizationEndpoint: "https://cloud.mongodb.com/oauth/authorize",
+			TokenEndpoint:         "https://authorize.mongodb.com/tokens",
+			RevocationEndpoint:    "https://authorize.mongodb.com/tokens/revoke",
+			CacheExpiry:           time.Now().Add(24 * time.Hour).Truncate(time.Second),
+		}
+		require.NoError(t, p.SetAuthServerMetadata(metadata))
+
+		got, err := p.AuthServerMetadata()
+		require.NoError(t, err)
+		require.NotNil(t, got)
+		assert.Equal(t, metadata.Issuer, got.Issuer)
+		assert.Equal(t, metadata.AuthorizationEndpoint, got.AuthorizationEndpoint)
+		assert.Equal(t, metadata.TokenEndpoint, got.TokenEndpoint)
+		assert.Equal(t, metadata.RevocationEndpoint, got.RevocationEndpoint)
+		assert.WithinDuration(t, metadata.CacheExpiry, got.CacheExpiry, time.Second)
+	})
+
+	t.Run("returns nil when no metadata is cached", func(t *testing.T) {
+		p := NewProfile("test", NewInMemoryStore())
+		got, err := p.AuthServerMetadata()
+		require.NoError(t, err)
+		assert.Nil(t, got)
+	})
+
+	t.Run("returns nil on corrupt cached metadata", func(t *testing.T) {
+		p := NewProfile("test", NewInMemoryStore())
+		p.Set(AuthServerMetadataField, "not-json")
+		got, err := p.AuthServerMetadata()
+		require.NoError(t, err)
+		assert.Nil(t, got)
+	})
+
+	t.Run("clears the cache on nil metadata", func(t *testing.T) {
+		p := NewProfile("test", NewInMemoryStore())
+		require.NoError(t, p.SetAuthServerMetadata(&code.AuthServerMetadata{Issuer: "https://authorize.mongodb.com"}))
+		require.NoError(t, p.SetAuthServerMetadata(nil))
+		assert.Empty(t, p.GetString(AuthServerMetadataField))
+	})
+}
+
+func TestProfile_AccessTokenSubject_UserAccount(t *testing.T) {
+	p := NewProfile("test", NewInMemoryStore())
+	p.SetAuthType(UserAccount)
+	p.SetAccessToken(jwtWithSubject(t, "user-123"))
+	p.SetRefreshToken("refresh-token")
+
+	subject, err := p.AccessTokenSubject()
+	require.NoError(t, err)
+	assert.Equal(t, "user-123", subject)
+}
+
+func jwtWithSubject(t *testing.T, subject string) string {
+	t.Helper()
+	claims := jwt.RegisteredClaims{
+		Subject:   subject,
+		ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour)),
+	}
+	s, err := jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString([]byte("test-secret"))
+	require.NoError(t, err)
+	return s
 }

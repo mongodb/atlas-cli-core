@@ -13,6 +13,7 @@ import (
 	reflect "reflect"
 
 	config "github.com/mongodb/atlas-cli-core/config"
+	code "go.mongodb.org/atlas-sdk/v20250312027/auth/code"
 	auth "go.mongodb.org/atlas/auth"
 	gomock "go.uber.org/mock/gomock"
 )
@@ -39,6 +40,49 @@ func NewMockProfileProvider(ctrl *gomock.Controller) *MockProfileProvider {
 // EXPECT returns an object that allows the caller to indicate expected use.
 func (m *MockProfileProvider) EXPECT() *MockProfileProviderMockRecorder {
 	return m.recorder
+}
+
+// AccessToken mocks base method.
+func (m *MockProfileProvider) AccessToken() string {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "AccessToken")
+	ret0, _ := ret[0].(string)
+	return ret0
+}
+
+// AccessToken indicates an expected call of AccessToken.
+func (mr *MockProfileProviderMockRecorder) AccessToken() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AccessToken", reflect.TypeOf((*MockProfileProvider)(nil).AccessToken))
+}
+
+// AuthServerMetadata mocks base method.
+func (m *MockProfileProvider) AuthServerMetadata() (*code.AuthServerMetadata, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "AuthServerMetadata")
+	ret0, _ := ret[0].(*code.AuthServerMetadata)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// AuthServerMetadata indicates an expected call of AuthServerMetadata.
+func (mr *MockProfileProviderMockRecorder) AuthServerMetadata() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AuthServerMetadata", reflect.TypeOf((*MockProfileProvider)(nil).AuthServerMetadata))
+}
+
+// AuthServerURL mocks base method.
+func (m *MockProfileProvider) AuthServerURL() string {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "AuthServerURL")
+	ret0, _ := ret[0].(string)
+	return ret0
+}
+
+// AuthServerURL indicates an expected call of AuthServerURL.
+func (mr *MockProfileProviderMockRecorder) AuthServerURL() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AuthServerURL", reflect.TypeOf((*MockProfileProvider)(nil).AuthServerURL))
 }
 
 // AuthType mocks base method.
@@ -83,6 +127,20 @@ func (mr *MockProfileProviderMockRecorder) ClientSecret() *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ClientSecret", reflect.TypeOf((*MockProfileProvider)(nil).ClientSecret))
 }
 
+// Name mocks base method.
+func (m *MockProfileProvider) Name() string {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Name")
+	ret0, _ := ret[0].(string)
+	return ret0
+}
+
+// Name indicates an expected call of Name.
+func (mr *MockProfileProviderMockRecorder) Name() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Name", reflect.TypeOf((*MockProfileProvider)(nil).Name))
+}
+
 // OpsManagerURL mocks base method.
 func (m *MockProfileProvider) OpsManagerURL() string {
 	m.ctrl.T.Helper()
@@ -125,6 +183,20 @@ func (mr *MockProfileProviderMockRecorder) PublicAPIKey() *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PublicAPIKey", reflect.TypeOf((*MockProfileProvider)(nil).PublicAPIKey))
 }
 
+// RefreshToken mocks base method.
+func (m *MockProfileProvider) RefreshToken() string {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "RefreshToken")
+	ret0, _ := ret[0].(string)
+	return ret0
+}
+
+// RefreshToken indicates an expected call of RefreshToken.
+func (mr *MockProfileProviderMockRecorder) RefreshToken() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RefreshToken", reflect.TypeOf((*MockProfileProvider)(nil).RefreshToken))
+}
+
 // Save mocks base method.
 func (m *MockProfileProvider) Save() error {
 	m.ctrl.T.Helper()
@@ -137,6 +209,20 @@ func (m *MockProfileProvider) Save() error {
 func (mr *MockProfileProviderMockRecorder) Save() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Save", reflect.TypeOf((*MockProfileProvider)(nil).Save))
+}
+
+// Service mocks base method.
+func (m *MockProfileProvider) Service() string {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Service")
+	ret0, _ := ret[0].(string)
+	return ret0
+}
+
+// Service indicates an expected call of Service.
+func (mr *MockProfileProviderMockRecorder) Service() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Service", reflect.TypeOf((*MockProfileProvider)(nil).Service))
 }
 
 // ServiceAccountToken mocks base method.
@@ -166,6 +252,32 @@ func (mr *MockProfileProviderMockRecorder) SetAccessToken(arg0 any) *gomock.Call
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetAccessToken", reflect.TypeOf((*MockProfileProvider)(nil).SetAccessToken), arg0)
 }
 
+// SetAuthServerMetadata mocks base method.
+func (m *MockProfileProvider) SetAuthServerMetadata(arg0 *code.AuthServerMetadata) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SetAuthServerMetadata", arg0)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// SetAuthServerMetadata indicates an expected call of SetAuthServerMetadata.
+func (mr *MockProfileProviderMockRecorder) SetAuthServerMetadata(arg0 any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetAuthServerMetadata", reflect.TypeOf((*MockProfileProvider)(nil).SetAuthServerMetadata), arg0)
+}
+
+// SetAuthServerURL mocks base method.
+func (m *MockProfileProvider) SetAuthServerURL(arg0 string) {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "SetAuthServerURL", arg0)
+}
+
+// SetAuthServerURL indicates an expected call of SetAuthServerURL.
+func (mr *MockProfileProviderMockRecorder) SetAuthServerURL(arg0 any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetAuthServerURL", reflect.TypeOf((*MockProfileProvider)(nil).SetAuthServerURL), arg0)
+}
+
 // SetRefreshToken mocks base method.
 func (m *MockProfileProvider) SetRefreshToken(arg0 string) {
 	m.ctrl.T.Helper()
@@ -176,6 +288,18 @@ func (m *MockProfileProvider) SetRefreshToken(arg0 string) {
 func (mr *MockProfileProviderMockRecorder) SetRefreshToken(arg0 any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetRefreshToken", reflect.TypeOf((*MockProfileProvider)(nil).SetRefreshToken), arg0)
+}
+
+// SetTokenExpiry mocks base method.
+func (m *MockProfileProvider) SetTokenExpiry(arg0 string) {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "SetTokenExpiry", arg0)
+}
+
+// SetTokenExpiry indicates an expected call of SetTokenExpiry.
+func (mr *MockProfileProviderMockRecorder) SetTokenExpiry(arg0 any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetTokenExpiry", reflect.TypeOf((*MockProfileProvider)(nil).SetTokenExpiry), arg0)
 }
 
 // Token mocks base method.

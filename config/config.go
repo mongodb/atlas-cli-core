@@ -23,7 +23,9 @@ import (
 
 // MaxSupportedVersion is the maximum supported config version available in AtlasCLI.
 const (
-	MaxSupportedVersion = 2
+	// MaxSupportedVersion must ship in lockstep with the version 3 migration in
+	// mongodb-atlas-cli (auth_type user_account → user_account_legacy rename).
+	MaxSupportedVersion = 3
 	versionKey          = "version"
 )
 
@@ -54,6 +56,16 @@ func Path(f string) (string, error) {
 // ensuring plugins always use the latest AtlasCLI configuration schema.
 func LoadAtlasCLIConfig() (*Profile, error) {
 	return LoadAtlasCLIConfigWithVersion(MaxSupportedVersion)
+}
+
+// FreshRefreshToken reads the profile's stored refresh token from a new store,
+// bypassing this process's startup snapshot. It returns "" when it cannot be read.
+func FreshRefreshToken(profileName string) string {
+	store, err := NewDefaultStore()
+	if err != nil {
+		return ""
+	}
+	return NewProfile(profileName, store).RefreshToken()
 }
 
 // LoadAtlasCLIConfigWithVersion loads configuration with validation for specified
@@ -110,7 +122,7 @@ func verifyConfigVersion(expectedVersion int64, s Store) error {
 	// If version is less than than expectedVersion, the AtlasCLI is outdated.
 	if version < expectedVersion {
 		// Scenario 3: User upgrades plugin but not AtlasCLI, which does not support expected configuration version. AtlasCLI should be updated.
-		return fmt.Errorf("config version %d is older than expected version %d. Please upgrade to a newer version of AtlasCLI", version, expectedVersion)
+		return fmt.Errorf("config version %d is older than expected version %d. Please upgrade to a newer version of AtlasCLI and run any `atlas` command to migrate your config", version, expectedVersion)
 	}
 
 	return nil

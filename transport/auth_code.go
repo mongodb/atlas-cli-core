@@ -66,8 +66,7 @@ func NewAuthCodeTransport(profile ProfileProvider, token *atlasauth.Token, base 
 
 // SaveUserAccountToken persists an Authorization Code token, its expiry, and its
 // issuer binding. It is the single write path for user_account credentials, used
-// by both the refresh transport and the CLI login flow. A failed save is retried
-// once.
+// by both the refresh transport and the CLI login flow.
 func SaveUserAccountToken(profile ProfileProvider, t *code.Token, metadata *code.AuthServerMetadata) error {
 	profile.SetAccessToken(t.AccessToken)
 	profile.SetRefreshToken(t.RefreshToken)
@@ -78,10 +77,7 @@ func SaveUserAccountToken(profile ProfileProvider, t *code.Token, metadata *code
 			return err
 		}
 	}
-	if err := profile.Save(); err != nil {
-		return errors.Join(err, profile.Save())
-	}
-	return nil
+	return profile.Save()
 }
 
 type authCodeTransport struct {
@@ -162,7 +158,8 @@ func (tr *authCodeTransport) refreshToken(ctx context.Context, metadata *code.Au
 
 // RevokeUserAccountToken revokes the stored Authorization Code tokens at the
 // discovered revocation endpoint, for logout. The refresh token is revoked first:
-// it is the long-lived credential.
+// it is the long-lived credential. Callers must clear the profile credentials
+// afterward, regardless of the revocation outcome.
 func RevokeUserAccountToken(ctx context.Context, profile ProfileProvider, version string) error {
 	if profile.AccessToken() == "" && profile.RefreshToken() == "" {
 		return nil

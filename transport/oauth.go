@@ -80,7 +80,7 @@ type AuthServerGetter interface {
 // Authorization Server. The client ID is always the registered public client,
 // shared across environments: client_id is the service-account profile field.
 // Issuer precedence: the issuer the profile's tokens were issued by (auth_server_url),
-// then MONGODB_ATLAS_AUTH_SERVER_URL, then the gov default.
+// then MONGODB_ATLAS_AUTH_SERVER_URL, then the gov default, then the SDK's production default.
 func FlowForAuthServer(c AuthServerGetter, client *http.Client, version string) (*code.Config, error) {
 	authOpts := []code.ConfigOpt{
 		code.SetUserAgent(config.UserAgent(version)),
@@ -89,7 +89,9 @@ func FlowForAuthServer(c AuthServerGetter, client *http.Client, version string) 
 	}
 	if issuer := c.AuthServerURL(); issuer != "" {
 		authOpts = append(authOpts, code.SetAuthServerURL(issuer))
-	} else if os.Getenv(authServerURLEnvVar) == "" && c.Service() == config.CloudGovService {
+	} else if env := os.Getenv(authServerURLEnvVar); env != "" {
+		authOpts = append(authOpts, code.SetAuthServerURL(env))
+	} else if c.Service() == config.CloudGovService {
 		authOpts = append(authOpts, code.SetAuthServerURL(govAuthServerURL))
 	}
 

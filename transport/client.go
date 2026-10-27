@@ -19,6 +19,7 @@ import (
 	"net/http"
 
 	"github.com/mongodb/atlas-cli-core/config"
+	"go.mongodb.org/atlas-sdk/v20250312027/auth/code"
 	"go.mongodb.org/atlas/auth"
 	"golang.org/x/oauth2"
 )
@@ -32,12 +33,21 @@ type ProfileProvider interface {
 	PrivateAPIKey() string
 	Token() (*auth.Token, error)
 	ServiceAccountToken() (*auth.Token, error)
+	AccessToken() string
+	RefreshToken() string
+	FreshRefreshToken() (string, error)
 	SetAccessToken(string)
 	SetRefreshToken(string)
+	SetTokenExpiry(string)
 	Save() error
 	ClientID() string
 	ClientSecret() string
 	OpsManagerURL() string
+	Service() string
+	AuthServerIssuer() string
+	SetAuthServerIssuer(string)
+	AuthServerMetadata() *code.AuthServerMetadata
+	SetAuthServerMetadata(*code.AuthServerMetadata)
 }
 
 func HTTPClient(version string, httpTransport http.RoundTripper) (*http.Client, error) {
@@ -54,22 +64,33 @@ func HTTPClientFromProfile(profile ProfileProvider, version string, httpTranspor
 		if err != nil {
 			return nil, err
 		}
-
-		// If the token is not nil, we're using the access token transport
-		if token != nil {
-			tr, err := NewAccessTokenTransport(token, httpTransport, version, func(t *auth.Token) error {
-				profile.SetAccessToken(t.AccessToken)
-				profile.SetRefreshToken(t.RefreshToken)
-				return profile.Save()
-			})
-			if err != nil {
-				return nil, err
-			}
-			return &http.Client{Transport: tr}, nil
+		if token == nil {
+			return &http.Client{Transport: httpTransport}, nil
 		}
 
-		// No token available, we're falling back to the default client (default branch)
-		fallthrough
+		tr, err := NewAuthCodeTransport(profile, token, httpTransport, version)
+		if err != nil {
+			return nil, err
+		}
+		return &http.Client{Transport: tr}, nil
+	case config.UserAccountLegacy:
+		token, err := profile.Token()
+		if err != nil {
+			return nil, err
+		}
+		if token == nil {
+			return &http.Client{Transport: httpTransport}, nil
+		}
+
+		tr, err := NewAccessTokenTransport(token, httpTransport, version, func(t *auth.Token) error {
+			profile.SetAccessToken(t.AccessToken)
+			profile.SetRefreshToken(t.RefreshToken)
+			return profile.Save()
+		})
+		if err != nil {
+			return nil, err
+		}
+		return &http.Client{Transport: tr}, nil
 	case config.ServiceAccount:
 		seed, err := profile.ServiceAccountToken()
 		if err != nil {

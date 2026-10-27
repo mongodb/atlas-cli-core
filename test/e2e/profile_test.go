@@ -73,7 +73,7 @@ func TestProfileValidation(t *testing.T) {
 		viper.Reset()
 
 		configPath := filepath.Join(dir, "config.toml")
-		configContent := `version = 2
+		configContent := `version = 3
 silence_storage_warning = true
 
 [invalid-service]
@@ -96,7 +96,7 @@ service = "unsupported"
 		viper.Reset()
 
 		configPath := filepath.Join(dir, "config.toml")
-		configContent := `version = 2
+		configContent := `version = 3
 silence_storage_warning = true
 
 [cloud-profile]
@@ -141,7 +141,7 @@ project_id = "test_project"
 		viper.Reset()
 
 		configPath := filepath.Join(dir, "config.toml")
-		configContent := `version = 2
+		configContent := `version = 3
 silence_storage_warning = true
 
 [test-profile]
@@ -195,7 +195,7 @@ func TestMultipleProfilesE2E(t *testing.T) {
 
 		// Create config with multiple profiles
 		configPath := filepath.Join(dir, "config.toml")
-		configContent := `version = 2
+		configContent := `version = 3
 silence_storage_warning = true
 
 [dev]
@@ -233,7 +233,7 @@ service = "cloud"
 		viper.Reset()
 
 		configPath := filepath.Join(dir, "config.toml")
-		configContent := `version = 2
+		configContent := `version = 3
 silence_storage_warning = true
 
 [dev]
@@ -269,7 +269,7 @@ service = "cloud"
 		viper.Reset()
 
 		configPath := filepath.Join(dir, "config.toml")
-		configContent := `version = 2
+		configContent := `version = 3
 silence_storage_warning = true
 
 [single-profile]
@@ -294,7 +294,7 @@ service = "cloud"
 		viper.Reset()
 
 		configPath := filepath.Join(dir, "config.toml")
-		configContent := `version = 2
+		configContent := `version = 3
 silence_storage_warning = true
 
 [old-name]

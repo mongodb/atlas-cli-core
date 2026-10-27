@@ -16,6 +16,7 @@ package config
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -24,6 +25,7 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
+	"go.mongodb.org/atlas-sdk/v20250312027/auth/code"
 	"go.mongodb.org/atlas/auth"
 )
 
@@ -44,6 +46,9 @@ const (
 	privateAPIKey            = "private_api_key"
 	AccessTokenField         = "access_token"
 	RefreshTokenField        = "refresh_token"
+	TokenExpiryField         = "token_expiry" //nolint:gosec // config key, not a credential
+	AuthServerIssuerField    = "auth_server_issuer"
+	AuthServerMetadataField  = "auth_server_metadata"
 	ClientIDField            = "client_id"
 	ClientSecretField        = "client_secret"
 	OpsManagerURLField       = "ops_manager_url"
@@ -157,6 +162,8 @@ func ProfileProperties() []string {
 	return []string{
 		AccessTokenField,
 		apiVersion,
+		AuthServerMetadataField,
+		AuthServerIssuerField,
 		baseURL,
 		OpsManagerURLField,
 		orgID,
@@ -168,6 +175,7 @@ func ProfileProperties() []string {
 		ClientSecretField,
 		RefreshTokenField,
 		service,
+		TokenExpiryField,
 	}
 }
 
@@ -311,10 +319,14 @@ func (p *Profile) SetService(v string) {
 type AuthMechanism string
 
 const (
-	APIKeys        AuthMechanism = "api_keys"
-	UserAccount    AuthMechanism = "user_account"
-	ServiceAccount AuthMechanism = "service_account"
-	NoAuth         AuthMechanism = "no_auth"
+	APIKeys AuthMechanism = "api_keys"
+	// UserAccount is the Authorization Code + PKCE flow. Its meaning depends on the
+	// version 3 config migration in mongodb-atlas-cli renaming legacy profiles to
+	// UserAccountLegacy; both must ship in lockstep.
+	UserAccount       AuthMechanism = "user_account"
+	UserAccountLegacy AuthMechanism = "user_account_legacy"
+	ServiceAccount    AuthMechanism = "service_account"
+	NoAuth            AuthMechanism = "no_auth"
 )
 
 // AuthType determines the auth type, prioritizing credentials set via
@@ -390,6 +402,45 @@ func (p *Profile) RefreshToken() string {
 func SetRefreshToken(v string) { Default().SetRefreshToken(v) }
 func (p *Profile) SetRefreshToken(v string) {
 	p.Set(RefreshTokenField, v)
+}
+
+// FreshRefreshToken reads the stored refresh token from a new store, bypassing this
+// profile's in-memory snapshot. It errors when the new store cannot use the same
+// secure storage, since an empty result would then not mean "no stored token".
+func (p *Profile) FreshRefreshToken() (string, error) {
+	store, err := NewDefaultStore()
+	if err != nil {
+		return "", err
+	}
+	if p.configStore.IsSecure() && !store.IsSecure() {
+		return "", errors.New("secure storage is not available")
+	}
+	return NewProfile(p.Name(), store).RefreshToken(), nil
+}
+
+// TokenExpiry get configured access token expiry (RFC 3339).
+func TokenExpiry() string { return Default().TokenExpiry() }
+func (p *Profile) TokenExpiry() string {
+	return p.GetString(TokenExpiryField)
+}
+
+// SetTokenExpiry set configured access token expiry (RFC 3339).
+func SetTokenExpiry(v string) { Default().SetTokenExpiry(v) }
+func (p *Profile) SetTokenExpiry(v string) {
+	p.Set(TokenExpiryField, v)
+}
+
+// AuthServerIssuer get the issuer the profile's tokens were issued by. The key is
+// deliberately not auth_server_url, which MONGODB_ATLAS_AUTH_SERVER_URL would override.
+func AuthServerIssuer() string { return Default().AuthServerIssuer() }
+func (p *Profile) AuthServerIssuer() string {
+	return p.GetString(AuthServerIssuerField)
+}
+
+// SetAuthServerIssuer store the issuer the profile's tokens were issued by.
+func SetAuthServerIssuer(v string) { Default().SetAuthServerIssuer(v) }
+func (p *Profile) SetAuthServerIssuer(v string) {
+	p.Set(AuthServerIssuerField, v)
 }
 
 // ClientID get configured client ID.
@@ -476,7 +527,16 @@ func (p *Profile) tokenClaims() (jwt.RegisteredClaims, error) {
 	c := jwt.RegisteredClaims{}
 	// ParseUnverified is ok here, only want to make sure is a JWT and to get the claims for a Subject
 	_, _, err := new(jwt.Parser).ParseUnverified(p.AccessToken(), &c)
-	return c, err
+	if err != nil {
+		return c, err
+	}
+	// user_account: token_expiry (from expires_in) is authoritative over the JWT exp.
+	if p.AuthType() == UserAccount && p.TokenExpiry() != "" {
+		if t, err := time.Parse(time.RFC3339, p.TokenExpiry()); err == nil {
+			c.ExpiresAt = jwt.NewNumericDate(t)
+		}
+	}
+	return c, nil
 }
 
 // APIVersion get the default API version.
@@ -501,6 +561,37 @@ func (p *Profile) OpsManagerURL() string {
 func SetOpsManagerURL(v string) { Default().SetOpsManagerURL(v) }
 func (p *Profile) SetOpsManagerURL(v string) {
 	p.Set(OpsManagerURLField, v)
+}
+
+// authServerMetadataCache persists AuthServerMetadata plus its cache expiry.
+type authServerMetadataCache struct {
+	Metadata    code.AuthServerMetadata `json:"metadata"`
+	CacheExpiry time.Time               `json:"cache_expiry"`
+}
+
+// AuthServerMetadata get cached OAuth Authorization Server metadata. A missing or
+// corrupt cache returns nil.
+func AuthServerMetadata() *code.AuthServerMetadata { return Default().AuthServerMetadata() }
+func (p *Profile) AuthServerMetadata() *code.AuthServerMetadata {
+	var cache authServerMetadataCache
+	if err := json.Unmarshal([]byte(p.GetString(AuthServerMetadataField)), &cache); err != nil {
+		return nil
+	}
+	metadata := cache.Metadata
+	metadata.CacheExpiry = cache.CacheExpiry
+	return &metadata
+}
+
+// SetAuthServerMetadata store cached OAuth Authorization Server metadata. nil clears it.
+func SetAuthServerMetadata(m *code.AuthServerMetadata) { Default().SetAuthServerMetadata(m) }
+func (p *Profile) SetAuthServerMetadata(m *code.AuthServerMetadata) {
+	if m == nil {
+		p.Set(AuthServerMetadataField, "")
+		return
+	}
+	// Marshaling only strings, bools and a time cannot fail.
+	raw, _ := json.Marshal(authServerMetadataCache{Metadata: *m, CacheExpiry: m.CacheExpiry})
+	p.Set(AuthServerMetadataField, string(raw))
 }
 
 // AccountURL gets the configured account base url.

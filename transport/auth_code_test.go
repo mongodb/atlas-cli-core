@@ -25,6 +25,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/mongodb/atlas-cli-core/config"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.mongodb.org/atlas-sdk/v20250312027/auth/code"
@@ -96,13 +97,15 @@ func newTestAuthCodeTransport(t *testing.T, server *authCodeTestServer, token *a
 	}
 
 	return &authCodeTransport{
-		token:            authCodeToken(token),
-		flow:             flow,
-		metadata:         metadata,
-		base:             roundTripperStub{},
-		saveToken:        saveToken,
-		clearCredentials: clearCredentials,
-		loadRefreshToken: func() (string, error) { return token.RefreshToken, nil },
+		token: authCodeToken(token),
+		refresher: &authCodeRefresher{
+			flow:             flow,
+			metadata:         metadata,
+			saveToken:        saveToken,
+			clearCredentials: clearCredentials,
+			loadRefreshToken: func() (string, error) { return token.RefreshToken, nil },
+		},
+		base: roundTripperStub{},
 	}
 }
 
@@ -451,7 +454,7 @@ func TestAuthCodeTransportRefreshAfterRotation(t *testing.T) {
 		func(token *code.Token, _ *code.AuthServerMetadata) error { saved = token; return nil },
 		func() error { cleared = true; return nil },
 	)
-	tr.loadRefreshToken = func() (string, error) { return "rotated-refresh-token", nil }
+	tr.refresher.loadRefreshToken = func() (string, error) { return "rotated-refresh-token", nil }
 
 	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, "https://example.mongodb.com", http.NoBody)
 	require.NoError(t, err)
@@ -509,7 +512,7 @@ func TestAuthCodeTransportStoreReadFailureKeepsCredentials(t *testing.T) {
 		},
 		func() error { t.Error("credentials must not be cleared when the store cannot be read"); return nil },
 	)
-	tr.loadRefreshToken = func() (string, error) { return "", errors.New("keychain locked") }
+	tr.refresher.loadRefreshToken = func() (string, error) { return "", errors.New("keychain locked") }
 
 	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, "https://example.mongodb.com", http.NoBody)
 	require.NoError(t, err)
@@ -531,4 +534,173 @@ func TestAuthCodeClearCredentials(t *testing.T) {
 	mockProfile.EXPECT().Save().Return(nil)
 
 	require.NoError(t, authCodeClearCredentials(mockProfile)())
+}
+
+// expectUserAccountProfile sets the profile reads RefreshUserAccountToken performs
+// before refreshing, bound to the test server's issuer and cached metadata.
+func expectUserAccountProfile(m *MockProfileProvider, server *authCodeTestServer, token *atlasauth.Token) {
+	m.EXPECT().AuthType().Return(config.UserAccount)
+	m.EXPECT().Token().Return(token, nil)
+	m.EXPECT().AuthServerIssuer().Return(server.URL)
+	m.EXPECT().AuthServerMetadata().Return(server.metadata())
+}
+
+// expectSave expects SaveUserAccountToken to persist the refreshed tokens.
+func expectSave(m *MockProfileProvider, server *authCodeTestServer, accessToken, refreshToken string, saveErr error) {
+	m.EXPECT().SetAccessToken(accessToken)
+	m.EXPECT().SetRefreshToken(refreshToken)
+	m.EXPECT().SetTokenExpiry(gomock.Any())
+	m.EXPECT().SetAuthServerIssuer(server.URL)
+	m.EXPECT().SetAuthServerMetadata(gomock.Any())
+	m.EXPECT().Save().Return(saveErr)
+}
+
+// expectClear expects authCodeClearCredentials to clear the profile.
+func expectClear(m *MockProfileProvider) {
+	m.EXPECT().SetAccessToken("")
+	m.EXPECT().SetRefreshToken("")
+	m.EXPECT().SetTokenExpiry("")
+	m.EXPECT().SetAuthServerIssuer("")
+	m.EXPECT().SetAuthServerMetadata(nil)
+	m.EXPECT().Save().Return(nil)
+}
+
+func TestRefreshUserAccountToken(t *testing.T) {
+	t.Run("valid token makes no network call", func(t *testing.T) {
+		server := newAuthCodeTestServer(t)
+		server.serveRefreshToken("unused", "unused")
+
+		ctrl := gomock.NewController(t)
+		mockProfile := NewMockProfileProvider(ctrl)
+		mockProfile.EXPECT().AuthType().Return(config.UserAccount)
+		mockProfile.EXPECT().Token().Return(&atlasauth.Token{
+			AccessToken:  "access-token",
+			RefreshToken: "refresh-token",
+			TokenType:    "Bearer",
+			Expiry:       time.Now().Add(time.Hour),
+		}, nil)
+
+		require.NoError(t, refreshUserAccountTokenWithClient(t.Context(), mockProfile, server.Client(), testVersion))
+		assert.Equal(t, 0, int(server.tokenCalls.Load()))
+	})
+
+	t.Run("successful refresh is saved", func(t *testing.T) {
+		server := newAuthCodeTestServer(t)
+		server.serveRefreshToken("new-access-token", "new-refresh-token")
+
+		ctrl := gomock.NewController(t)
+		mockProfile := NewMockProfileProvider(ctrl)
+		expectUserAccountProfile(mockProfile, server, expiredAuthCodeToken())
+		expectSave(mockProfile, server, "new-access-token", "new-refresh-token", nil)
+
+		require.NoError(t, refreshUserAccountTokenWithClient(t.Context(), mockProfile, server.Client(), testVersion))
+		assert.Equal(t, 1, int(server.tokenCalls.Load()))
+	})
+
+	t.Run("refresh token rotated by another process is retried", func(t *testing.T) {
+		server := newAuthCodeTestServer(t)
+		expired := expiredAuthCodeToken()
+		var usedRefreshTokens []string
+		server.response = func(w http.ResponseWriter, r *http.Request) {
+			if !parseTestForm(t, w, r) {
+				return
+			}
+			usedRefreshTokens = append(usedRefreshTokens, r.Form.Get("refresh_token"))
+			w.Header().Set("Content-Type", "application/json")
+			if r.Form.Get("refresh_token") == expired.RefreshToken {
+				w.WriteHeader(http.StatusBadRequest)
+				_, _ = w.Write([]byte(`{"error":"invalid_grant"}`))
+				return
+			}
+			_, _ = w.Write([]byte(`{"access_token":"rotated-access-token","token_type":"Bearer","expires_in":3600}`))
+		}
+
+		ctrl := gomock.NewController(t)
+		mockProfile := NewMockProfileProvider(ctrl)
+		expectUserAccountProfile(mockProfile, server, expired)
+		mockProfile.EXPECT().FreshRefreshToken().Return("rotated-refresh-token", nil)
+		expectSave(mockProfile, server, "rotated-access-token", "rotated-refresh-token", nil)
+
+		require.NoError(t, refreshUserAccountTokenWithClient(t.Context(), mockProfile, server.Client(), testVersion))
+		assert.Equal(t, []string{expired.RefreshToken, "rotated-refresh-token"}, usedRefreshTokens)
+	})
+
+	t.Run("unrecoverable invalid_grant clears credentials", func(t *testing.T) {
+		server := newAuthCodeTestServer(t)
+		server.serveRefreshError("invalid_grant")
+
+		ctrl := gomock.NewController(t)
+		mockProfile := NewMockProfileProvider(ctrl)
+		expectUserAccountProfile(mockProfile, server, expiredAuthCodeToken())
+		// The stored refresh token is the one just rejected: no newer token to retry.
+		mockProfile.EXPECT().FreshRefreshToken().Return(expiredAuthCodeToken().RefreshToken, nil)
+		expectClear(mockProfile)
+
+		err := refreshUserAccountTokenWithClient(t.Context(), mockProfile, server.Client(), testVersion)
+		require.ErrorIs(t, err, ErrNotLoggedIn)
+		var oauthErr *code.OAuthError
+		require.ErrorAs(t, err, &oauthErr)
+		assert.Equal(t, "invalid_grant", oauthErr.ErrorCode)
+		assert.Equal(t, 1, int(server.tokenCalls.Load()))
+	})
+
+	t.Run("rejected retry clears credentials", func(t *testing.T) {
+		server := newAuthCodeTestServer(t)
+		server.serveRefreshError("invalid_grant")
+
+		ctrl := gomock.NewController(t)
+		mockProfile := NewMockProfileProvider(ctrl)
+		expectUserAccountProfile(mockProfile, server, expiredAuthCodeToken())
+		mockProfile.EXPECT().FreshRefreshToken().Return("rotated-refresh-token", nil)
+		expectClear(mockProfile)
+
+		err := refreshUserAccountTokenWithClient(t.Context(), mockProfile, server.Client(), testVersion)
+		require.ErrorIs(t, err, ErrNotLoggedIn)
+		assert.Equal(t, 2, int(server.tokenCalls.Load()))
+	})
+
+	t.Run("network error leaves credentials untouched", func(t *testing.T) {
+		server := newAuthCodeTestServer(t)
+		client := server.Client()
+		server.Close()
+
+		// gomock fails the test on any Set*, Save, or FreshRefreshToken call.
+		ctrl := gomock.NewController(t)
+		mockProfile := NewMockProfileProvider(ctrl)
+		expectUserAccountProfile(mockProfile, server, expiredAuthCodeToken())
+
+		err := refreshUserAccountTokenWithClient(t.Context(), mockProfile, client, testVersion)
+		require.Error(t, err)
+		require.NotErrorIs(t, err, ErrNotLoggedIn)
+	})
+
+	t.Run("save failure is returned", func(t *testing.T) {
+		server := newAuthCodeTestServer(t)
+		server.serveRefreshToken("new-access-token", "new-refresh-token")
+
+		ctrl := gomock.NewController(t)
+		mockProfile := NewMockProfileProvider(ctrl)
+		expectUserAccountProfile(mockProfile, server, expiredAuthCodeToken())
+		expectSave(mockProfile, server, "new-access-token", "new-refresh-token", errors.New("disk full"))
+
+		err := refreshUserAccountTokenWithClient(t.Context(), mockProfile, server.Client(), testVersion)
+		require.ErrorContains(t, err, "disk full")
+	})
+
+	t.Run("no stored token is not logged in", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		mockProfile := NewMockProfileProvider(ctrl)
+		mockProfile.EXPECT().AuthType().Return(config.UserAccount)
+		mockProfile.EXPECT().Token().Return(nil, nil)
+
+		require.ErrorIs(t, RefreshUserAccountToken(t.Context(), mockProfile, testVersion), ErrNotLoggedIn)
+	})
+
+	t.Run("non user_account profile is rejected", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		mockProfile := NewMockProfileProvider(ctrl)
+		mockProfile.EXPECT().AuthType().Return(config.UserAccountLegacy)
+
+		require.ErrorIs(t, RefreshUserAccountToken(t.Context(), mockProfile, testVersion), errNotUserAccount)
+	})
 }

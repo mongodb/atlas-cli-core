@@ -17,11 +17,13 @@ package transport
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"sync"
 	"time"
 
+	"github.com/mongodb/atlas-cli-core/config"
 	"go.mongodb.org/atlas-sdk/v20250312027/auth/code"
 	atlasauth "go.mongodb.org/atlas/auth"
 )
@@ -29,6 +31,8 @@ import (
 // ErrNotLoggedIn is returned once the profile's credentials were cleared after an
 // unrecoverable refresh failure.
 var ErrNotLoggedIn = errors.New("not logged in, run `atlas auth login`")
+
+var errNotUserAccount = errors.New("not a user_account profile")
 
 // NewAuthCodeTransport creates a transport for Authorization Code + PKCE (user_account)
 // profiles. Refresh and persistence are serialized under one mutex; unrecoverable
@@ -38,21 +42,15 @@ func NewAuthCodeTransport(profile ProfileProvider, token *atlasauth.Token, base 
 		return nil, errors.New("token is nil")
 	}
 
-	flow, err := FlowForAuthServer(profile, &http.Client{Transport: Default()}, version)
+	refresher, err := newAuthCodeRefresher(profile, &http.Client{Transport: Default()}, version)
 	if err != nil {
 		return nil, err
 	}
 
 	return &authCodeTransport{
-		token:    authCodeToken(token),
-		flow:     flow,
-		metadata: profile.AuthServerMetadata(),
-		base:     base,
-		saveToken: func(t *code.Token, md *code.AuthServerMetadata) error {
-			return SaveUserAccountToken(profile, t, md)
-		},
-		clearCredentials: authCodeClearCredentials(profile),
-		loadRefreshToken: profile.FreshRefreshToken,
+		token:     authCodeToken(token),
+		refresher: refresher,
+		base:      base,
 	}, nil
 }
 
@@ -71,15 +69,10 @@ func SaveUserAccountToken(profile ProfileProvider, t *code.Token, metadata *code
 }
 
 type authCodeTransport struct {
-	mu       sync.Mutex
-	token    *code.Token
-	flow     *code.Config
-	metadata *code.AuthServerMetadata
-	base     http.RoundTripper
-
-	saveToken        func(*code.Token, *code.AuthServerMetadata) error
-	clearCredentials func() error
-	loadRefreshToken func() (string, error)
+	mu        sync.Mutex
+	token     *code.Token
+	refresher *authCodeRefresher
+	base      http.RoundTripper
 }
 
 func (tr *authCodeTransport) RoundTrip(req *http.Request) (*http.Response, error) {
@@ -106,36 +99,78 @@ func (tr *authCodeTransport) ensureToken(ctx context.Context) (*code.Token, erro
 		return tr.token, nil
 	}
 
-	metadata, err := ResolveAuthServerMetadata(ctx, tr.flow, tr.metadata, false)
+	token, dead, err := tr.refresher.refresh(ctx, tr.token)
+	if dead {
+		tr.token = nil
+	} else if token != nil {
+		tr.token = token
+	}
+	return token, err
+}
+
+// authCodeRefresher is the single refresh path for user_account credentials,
+// shared by authCodeTransport and RefreshUserAccountToken. It is not safe for
+// concurrent use; callers serialize access.
+type authCodeRefresher struct {
+	flow     *code.Config
+	metadata *code.AuthServerMetadata
+
+	saveToken        func(*code.Token, *code.AuthServerMetadata) error
+	clearCredentials func() error
+	loadRefreshToken func() (string, error)
+}
+
+func newAuthCodeRefresher(profile ProfileProvider, client *http.Client, version string) (*authCodeRefresher, error) {
+	flow, err := FlowForAuthServer(profile, client, version)
 	if err != nil {
 		return nil, err
 	}
-	tr.metadata = metadata
 
-	token, dead, err := tr.refreshToken(ctx, metadata)
+	return &authCodeRefresher{
+		flow:     flow,
+		metadata: profile.AuthServerMetadata(),
+		saveToken: func(t *code.Token, md *code.AuthServerMetadata) error {
+			return SaveUserAccountToken(profile, t, md)
+		},
+		clearCredentials: authCodeClearCredentials(profile),
+		loadRefreshToken: profile.FreshRefreshToken,
+	}, nil
+}
+
+// refresh exchanges current's refresh token and persists the result. When
+// persisting fails the refreshed token is still returned with the error: the
+// server may have rotated the refresh token, so it is the only usable one. dead
+// reports that the credentials can never refresh and were cleared; the error
+// then wraps ErrNotLoggedIn.
+func (r *authCodeRefresher) refresh(ctx context.Context, current *code.Token) (token *code.Token, dead bool, err error) {
+	metadata, err := ResolveAuthServerMetadata(ctx, r.flow, r.metadata, false)
+	if err != nil {
+		return nil, false, err
+	}
+	r.metadata = metadata
+
+	token, dead, err = r.refreshToken(ctx, metadata, current.RefreshToken)
 	if err != nil {
 		logAuthServerFailure("refresh", err)
 		if dead {
-			tr.token = nil
-			if clearErr := tr.clearCredentials(); clearErr != nil {
-				return nil, errors.Join(err, clearErr)
+			err = errors.Join(err, ErrNotLoggedIn)
+			if clearErr := r.clearCredentials(); clearErr != nil {
+				err = errors.Join(err, clearErr)
 			}
 		}
-		return nil, err
+		return nil, dead, err
 	}
-	tr.token = token
 
-	return token, tr.saveToken(token, metadata)
+	return token, false, r.saveToken(token, metadata)
 }
 
 // refreshToken retries once with the stored refresh token when it was rotated
 // by another process. dead reports that the stored credentials can never refresh:
 // the stored refresh token was read and was rejected too, or is not newer.
-func (tr *authCodeTransport) refreshToken(ctx context.Context, metadata *code.AuthServerMetadata) (token *code.Token, dead bool, err error) {
-	used := tr.token.RefreshToken
-	token, _, err = tr.flow.RefreshAccessToken(ctx, metadata, used)
+func (r *authCodeRefresher) refreshToken(ctx context.Context, metadata *code.AuthServerMetadata, used string) (token *code.Token, dead bool, err error) {
+	token, _, err = r.flow.RefreshAccessToken(ctx, metadata, used)
 	if err != nil && isUnrecoverableRefreshError(err) {
-		stored, loadErr := tr.loadRefreshToken()
+		stored, loadErr := r.loadRefreshToken()
 		if loadErr != nil {
 			return nil, false, errors.Join(err, loadErr)
 		}
@@ -143,7 +178,7 @@ func (tr *authCodeTransport) refreshToken(ctx context.Context, metadata *code.Au
 			return nil, true, err
 		}
 		used = stored
-		token, _, err = tr.flow.RefreshAccessToken(ctx, metadata, used)
+		token, _, err = r.flow.RefreshAccessToken(ctx, metadata, used)
 		if err != nil {
 			return nil, isUnrecoverableRefreshError(err), err
 		}
@@ -155,6 +190,40 @@ func (tr *authCodeTransport) refreshToken(ctx context.Context, metadata *code.Au
 		token.RefreshToken = used
 	}
 	return token, false, nil
+}
+
+// RefreshUserAccountToken refreshes the stored Authorization Code token of a
+// user_account profile when it is expired, for callers that need a valid token
+// outside an HTTP request. It shares its refresh path with the transport: an
+// unrecoverable refresh failure clears the profile credentials and returns an
+// error wrapping ErrNotLoggedIn.
+func RefreshUserAccountToken(ctx context.Context, profile ProfileProvider, version string) error {
+	return refreshUserAccountTokenWithClient(ctx, profile, &http.Client{Transport: Default()}, version)
+}
+
+func refreshUserAccountTokenWithClient(ctx context.Context, profile ProfileProvider, client *http.Client, version string) error {
+	if authType := profile.AuthType(); authType != config.UserAccount {
+		return fmt.Errorf("%w: profile auth type is %q", errNotUserAccount, authType)
+	}
+
+	token, err := profile.Token()
+	if err != nil {
+		return err
+	}
+	if token == nil {
+		return ErrNotLoggedIn
+	}
+	current := authCodeToken(token)
+	if current.Valid() {
+		return nil
+	}
+
+	refresher, err := newAuthCodeRefresher(profile, client, version)
+	if err != nil {
+		return err
+	}
+	_, _, err = refresher.refresh(ctx, current)
+	return err
 }
 
 // RevokeUserAccountToken revokes the stored Authorization Code tokens at the

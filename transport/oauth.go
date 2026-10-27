@@ -31,6 +31,9 @@ const (
 	GovClientID = "0oabtyfelbTBdoucy297" // GovClientID for production
 
 	authServerURLEnvVar = "MONGODB_ATLAS_AUTH_SERVER_URL"
+	// authClientIDEnvVar overrides authCodeClientID. It is not MONGODB_ATLAS_CLIENT_ID,
+	// which is the service-account client ID.
+	authClientIDEnvVar = "MONGODB_ATLAS_AUTH_CLIENT_ID"
 	// authCodeClientID is the registered public client ID, used across environments.
 	authCodeClientID = "https://mongodb.com/products/tools/atlas-cli"
 	// govAuthServerURL is the Authorization Server issuer for the Government service.
@@ -77,14 +80,18 @@ type AuthServerGetter interface {
 }
 
 // FlowForAuthServer creates the Authorization Code + PKCE config for the dedicated
-// Authorization Server. The client ID is always the registered public client,
-// shared across environments: client_id is the service-account profile field.
+// Authorization Server. The client ID is the registered public client, overridable
+// with MONGODB_ATLAS_AUTH_CLIENT_ID; client_id is the service-account profile field.
 // Issuer precedence: the issuer the profile's tokens were issued by (auth_server_issuer),
 // then MONGODB_ATLAS_AUTH_SERVER_URL, then the gov default, then the SDK's production default.
 func FlowForAuthServer(c AuthServerGetter, client *http.Client, version string) (*code.Config, error) {
+	clientID := authCodeClientID
+	if env := os.Getenv(authClientIDEnvVar); env != "" {
+		clientID = env
+	}
 	authOpts := []code.ConfigOpt{
 		code.SetUserAgent(config.UserAgent(version)),
-		code.SetClientID(authCodeClientID),
+		code.SetClientID(clientID),
 		code.SetScopes([]string{"atlas"}),
 	}
 	if issuer := c.AuthServerIssuer(); issuer != "" {

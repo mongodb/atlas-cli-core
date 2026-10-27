@@ -46,3 +46,26 @@ func TestFlowForAuthServerStoredIssuerWinsOverEnv(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "https://stored.example.com", flow.AuthServerURL.String())
 }
+
+func TestFlowForAuthServerClientID(t *testing.T) {
+	tests := []struct {
+		name     string
+		authEnv  string
+		saEnv    string
+		expected string
+	}{
+		{name: "default", expected: authCodeClientID},
+		{name: "MONGODB_ATLAS_AUTH_CLIENT_ID overrides", authEnv: "custom-client", expected: "custom-client"},
+		{name: "service-account MONGODB_ATLAS_CLIENT_ID is ignored", saEnv: "sa-client", expected: authCodeClientID},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv("MONGODB_ATLAS_AUTH_CLIENT_ID", tt.authEnv)
+			t.Setenv("MONGODB_ATLAS_CLIENT_ID", tt.saEnv)
+
+			flow, err := FlowForAuthServer(config.NewProfile(config.DefaultProfile, config.NewInMemoryStore()), nil, testVersion)
+			require.NoError(t, err)
+			assert.Equal(t, tt.expected, flow.ClientID)
+		})
+	}
+}

@@ -297,7 +297,7 @@ func TestEnsureAuthServerMetadata(t *testing.T) {
 		assert.Equal(t, 1, int(discoveryCalls.Load()-before))
 	})
 
-	t.Run("stale metadata for the same issuer is used when discovery fails", func(t *testing.T) {
+	t.Run("stale metadata is not used when discovery fails", func(t *testing.T) {
 		flow, err := code.NewConfigWithOptions(server.Client(), code.SetAuthServerURL(server.URL))
 		require.NoError(t, err)
 
@@ -312,8 +312,8 @@ func TestEnsureAuthServerMetadata(t *testing.T) {
 			CacheExpiry:           time.Now().Add(-time.Hour),
 		}
 		result, err := ensureAuthServerMetadata(t.Context(), flow, stale)
-		require.NoError(t, err)
-		assert.Same(t, stale, result)
+		require.Error(t, err)
+		assert.Nil(t, result)
 	})
 
 	t.Run("stale metadata is rediscovered", func(t *testing.T) {

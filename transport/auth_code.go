@@ -197,8 +197,7 @@ func revokeAuthServerTokens(ctx context.Context, flow *code.Config, metadata *co
 
 // ensureAuthServerMetadata returns the cached metadata, discovering fresh metadata
 // when the cache is missing, expired, or issued by a different authorization server.
-// When discovery fails, stale cached metadata for the same issuer is used. The result
-// is persisted with the next token save.
+// The result is persisted with the next token save.
 func ensureAuthServerMetadata(ctx context.Context, flow *code.Config, metadata *code.AuthServerMetadata) (*code.AuthServerMetadata, error) {
 	if metadata != nil && metadata.Issuer == flow.AuthServerURL.String() &&
 		(metadata.CacheExpiry.IsZero() || metadata.CacheExpiry.After(time.Now())) {
@@ -208,9 +207,6 @@ func ensureAuthServerMetadata(ctx context.Context, flow *code.Config, metadata *
 	discovered, _, err := flow.DiscoverAuthServer(ctx)
 	if err != nil {
 		logAuthServerFailure("discovery", err)
-		if metadata != nil && metadata.Issuer == flow.AuthServerURL.String() {
-			return metadata, nil
-		}
 		return nil, err
 	}
 	return discovered, nil

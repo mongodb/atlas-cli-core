@@ -106,7 +106,7 @@ func (tr *authCodeTransport) ensureToken(ctx context.Context) (*code.Token, erro
 		return tr.token, nil
 	}
 
-	metadata, err := ensureAuthServerMetadata(ctx, tr.flow, tr.metadata)
+	metadata, err := ResolveAuthServerMetadata(ctx, tr.flow, tr.metadata, false)
 	if err != nil {
 		return nil, err
 	}
@@ -170,7 +170,7 @@ func RevokeUserAccountToken(ctx context.Context, profile ProfileProvider, versio
 	if err != nil {
 		return err
 	}
-	metadata, err := ensureAuthServerMetadata(ctx, flow, profile.AuthServerMetadata())
+	metadata, err := ResolveAuthServerMetadata(ctx, flow, profile.AuthServerMetadata(), false)
 	if err != nil {
 		return err
 	}
@@ -195,13 +195,14 @@ func revokeAuthServerTokens(ctx context.Context, flow *code.Config, metadata *co
 	return errors.Join(errs...)
 }
 
-// ensureAuthServerMetadata returns the cached metadata, discovering fresh metadata
-// when the cache is missing, expired, or issued by a different authorization server.
-// The result is persisted with the next token save.
-func ensureAuthServerMetadata(ctx context.Context, flow *code.Config, metadata *code.AuthServerMetadata) (*code.AuthServerMetadata, error) {
-	if metadata != nil && metadata.Issuer == flow.AuthServerURL.String() &&
-		(metadata.CacheExpiry.IsZero() || metadata.CacheExpiry.After(time.Now())) {
-		return metadata, nil
+// ResolveAuthServerMetadata returns the cached metadata, discovering fresh metadata
+// when forceRefresh is set or the cache is missing, expired, or issued by a different
+// authorization server than flow's. A cache without an expiry is treated as expired.
+// The caller persists the result, for example with SaveUserAccountToken.
+func ResolveAuthServerMetadata(ctx context.Context, flow *code.Config, cached *code.AuthServerMetadata, forceRefresh bool) (*code.AuthServerMetadata, error) {
+	if !forceRefresh && cached != nil && cached.Issuer == flow.AuthServerURL.String() &&
+		cached.CacheExpiry.After(time.Now()) {
+		return cached, nil
 	}
 
 	discovered, _, err := flow.DiscoverAuthServer(ctx)

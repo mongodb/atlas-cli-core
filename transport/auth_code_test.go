@@ -266,23 +266,57 @@ func TestAuthCodeTransportRecoverableRefreshErrorKeepsCredentials(t *testing.T) 
 	assert.False(t, cleared, "a transient error must not clear credentials")
 }
 
-// TestEnsureAuthServerMetadata verifies stale metadata triggers discovery with the
-// refreshed metadata persisted, and fresh metadata is reused without discovery.
-func TestEnsureAuthServerMetadata(t *testing.T) {
+// TestResolveAuthServerMetadata verifies when cached metadata is reused and when
+// discovery runs.
+func TestResolveAuthServerMetadata(t *testing.T) {
 	server := newAuthCodeTestServer(t)
 	server.serveRefreshToken("unused", "unused")
 
 	var discoveryCalls atomic.Int32
+	serveDiscovery := func() {
+		server.response = func(w http.ResponseWriter, _ *http.Request) {
+			discoveryCalls.Add(1)
+			w.Header().Set("Content-Type", "application/json")
+			w.Header().Set("Cache-Control", "max-age=3600")
+			_, _ = w.Write([]byte(`{"issuer":"` + server.URL + `","authorization_endpoint":"` + server.URL + `/oauth/authorize","token_endpoint":"` + server.URL + `/tokens","revocation_endpoint":"` + server.URL + `/tokens/revoke"}`))
+		}
+	}
 
 	t.Run("fresh metadata is reused", func(t *testing.T) {
 		flow, err := code.NewConfigWithOptions(server.Client(), code.SetAuthServerURL(server.URL))
 		require.NoError(t, err)
 
 		metadata := &code.AuthServerMetadata{Issuer: server.URL, CacheExpiry: time.Now().Add(time.Hour)}
-		result, err := ensureAuthServerMetadata(t.Context(), flow, metadata)
+		result, err := ResolveAuthServerMetadata(t.Context(), flow, metadata, false)
 		require.NoError(t, err)
 		assert.Same(t, metadata, result)
 		assert.Equal(t, 0, int(discoveryCalls.Load()))
+	})
+
+	t.Run("forceRefresh rediscovers fresh metadata", func(t *testing.T) {
+		before := discoveryCalls.Load()
+		serveDiscovery()
+		flow, err := code.NewConfigWithOptions(server.Client(), code.SetAuthServerURL(server.URL))
+		require.NoError(t, err)
+
+		cached := &code.AuthServerMetadata{Issuer: server.URL, CacheExpiry: time.Now().Add(time.Hour)}
+		result, err := ResolveAuthServerMetadata(t.Context(), flow, cached, true)
+		require.NoError(t, err)
+		assert.NotSame(t, cached, result)
+		assert.Equal(t, 1, int(discoveryCalls.Load()-before))
+	})
+
+	t.Run("metadata without a cache expiry is rediscovered", func(t *testing.T) {
+		before := discoveryCalls.Load()
+		serveDiscovery()
+		flow, err := code.NewConfigWithOptions(server.Client(), code.SetAuthServerURL(server.URL))
+		require.NoError(t, err)
+
+		cached := &code.AuthServerMetadata{Issuer: server.URL}
+		result, err := ResolveAuthServerMetadata(t.Context(), flow, cached, false)
+		require.NoError(t, err)
+		assert.NotSame(t, cached, result)
+		assert.Equal(t, 1, int(discoveryCalls.Load()-before))
 	})
 
 	t.Run("metadata issued by another server is rediscovered", func(t *testing.T) {
@@ -298,7 +332,7 @@ func TestEnsureAuthServerMetadata(t *testing.T) {
 		}
 
 		metadata := &code.AuthServerMetadata{Issuer: "https://other.example.com", CacheExpiry: time.Now().Add(time.Hour)}
-		result, err := ensureAuthServerMetadata(t.Context(), flow, metadata)
+		result, err := ResolveAuthServerMetadata(t.Context(), flow, metadata, false)
 		require.NoError(t, err)
 		assert.Equal(t, server.URL, result.Issuer)
 		assert.Equal(t, 1, int(discoveryCalls.Load()-before))
@@ -318,7 +352,7 @@ func TestEnsureAuthServerMetadata(t *testing.T) {
 			TokenEndpoint:         server.URL + "/tokens",
 			CacheExpiry:           time.Now().Add(-time.Hour),
 		}
-		result, err := ensureAuthServerMetadata(t.Context(), flow, stale)
+		result, err := ResolveAuthServerMetadata(t.Context(), flow, stale, false)
 		require.Error(t, err)
 		assert.Nil(t, result)
 	})
@@ -336,7 +370,7 @@ func TestEnsureAuthServerMetadata(t *testing.T) {
 		require.NoError(t, err)
 
 		metadata := &code.AuthServerMetadata{Issuer: server.URL, CacheExpiry: time.Now().Add(-time.Hour)}
-		result, err := ensureAuthServerMetadata(t.Context(), flow, metadata)
+		result, err := ResolveAuthServerMetadata(t.Context(), flow, metadata, false)
 		require.NoError(t, err)
 
 		require.NotNil(t, result)

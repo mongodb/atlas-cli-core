@@ -13,7 +13,7 @@ require (
 	go.mongodb.org/atlas v0.38.0
 	go.mongodb.org/atlas-sdk/v20250312006 v20250312006.0.0
 	go.mongodb.org/atlas-sdk/v20250312024 v20250312024.0.0
-	go.mongodb.org/atlas-sdk/v20250312027 v20250312027.0.0-00010101000000-000000000000
+	go.mongodb.org/atlas-sdk/v20250312027 v20250312027.1.0
 	go.uber.org/mock v0.6.0
 	golang.org/x/oauth2 v0.37.0
 )
@@ -40,5 +40,3 @@ require (
 )
 
 tool go.uber.org/mock/mockgen
-
-replace go.mongodb.org/atlas-sdk/v20250312027 => ../atlas-sdk-go

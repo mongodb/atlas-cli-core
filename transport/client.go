@@ -35,6 +35,7 @@ type ProfileProvider interface {
 	ServiceAccountToken() (*auth.Token, error)
 	AccessToken() string
 	RefreshToken() string
+	FreshRefreshToken() (string, error)
 	SetAccessToken(string)
 	SetRefreshToken(string)
 	SetTokenExpiry(string)
@@ -43,7 +44,6 @@ type ProfileProvider interface {
 	ClientSecret() string
 	OpsManagerURL() string
 	Service() string
-	Name() string
 	AuthServerURL() string
 	SetAuthServerURL(string)
 	AuthServerMetadata() (*code.AuthServerMetadata, error)

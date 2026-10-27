@@ -15,6 +15,7 @@
 package config
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -56,5 +57,28 @@ func TestFreshRefreshToken(t *testing.T) {
 	require.NoError(t, other.Save())
 
 	assert.Equal(t, "original-refresh-token", snapshot.RefreshToken(), "the snapshot is not reloaded")
-	assert.Equal(t, "rotated-refresh-token", FreshRefreshToken(DefaultProfile))
+	fresh, err := snapshot.FreshRefreshToken()
+	require.NoError(t, err)
+	assert.Equal(t, "rotated-refresh-token", fresh)
+}
+
+// TestFreshRefreshTokenSecureStorageUnavailable verifies a fresh read that loses
+// secure storage errors instead of reporting no stored token.
+func TestFreshRefreshTokenSecureStorageUnavailable(t *testing.T) {
+	tempConfigHome(t)
+	keyring.MockInit()
+
+	store, err := NewStoreWithEnvOption(false)
+	require.NoError(t, err)
+	require.True(t, store.IsSecure())
+	profile := NewProfile(DefaultProfile, store)
+	profile.SetRefreshToken("refresh-token")
+	require.NoError(t, profile.Save())
+
+	keyring.MockInitWithError(errors.New("keychain locked"))
+	t.Cleanup(keyring.MockInit)
+
+	fresh, err := profile.FreshRefreshToken()
+	require.Error(t, err)
+	assert.Empty(t, fresh)
 }

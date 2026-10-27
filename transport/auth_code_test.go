@@ -16,6 +16,7 @@ package transport
 
 import (
 	"bytes"
+	"errors"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -102,7 +103,7 @@ func newTestAuthCodeTransport(t *testing.T, server *authCodeTestServer, token *a
 		saveToken:        saveToken,
 		saveMetadata:     func(*code.AuthServerMetadata) error { return nil },
 		clearCredentials: clearCredentials,
-		loadRefreshToken: func() string { return token.RefreshToken },
+		loadRefreshToken: func() (string, error) { return token.RefreshToken, nil },
 	}
 }
 
@@ -210,20 +211,26 @@ func TestAuthCodeTransportUnrecoverableRefreshClearsCredentials(t *testing.T) {
 	slog.SetDefault(slog.New(slog.NewTextHandler(&logBuf, &slog.HandlerOptions{Level: slog.LevelWarn})))
 	t.Cleanup(func() { slog.SetDefault(previousLogger) })
 
-	cleared := false
+	clears := 0
 	tr := newTestAuthCodeTransport(t, server, expiredAuthCodeToken(),
 		func(*code.Token, *code.AuthServerMetadata) error {
 			t.Error("token must not be saved on failed refresh")
 			return nil
 		},
-		func() error { cleared = true; return nil },
+		func() error { clears++; return nil },
 	)
 
 	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, "https://example.mongodb.com", http.NoBody)
 	require.NoError(t, err)
 	_, err = tr.RoundTrip(req)
 	require.Error(t, err)
-	assert.True(t, cleared, "invalid_grant must clear credentials")
+	assert.Equal(t, 1, clears, "invalid_grant must clear credentials")
+
+	// Later requests fail without refreshing or clearing again.
+	_, err = tr.RoundTrip(req)
+	require.ErrorIs(t, err, ErrNotLoggedIn)
+	assert.Equal(t, 1, int(server.tokenCalls.Load()))
+	assert.Equal(t, 1, clears)
 
 	logs := logBuf.String()
 	assert.Contains(t, logs, "operation=refresh")
@@ -407,7 +414,7 @@ func TestAuthCodeTransportRefreshAfterRotation(t *testing.T) {
 		func(token *code.Token, _ *code.AuthServerMetadata) error { saved = token; return nil },
 		func() error { cleared = true; return nil },
 	)
-	tr.loadRefreshToken = func() string { return "rotated-refresh-token" }
+	tr.loadRefreshToken = func() (string, error) { return "rotated-refresh-token", nil }
 
 	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, "https://example.mongodb.com", http.NoBody)
 	require.NoError(t, err)
@@ -449,4 +456,42 @@ func TestRevokeAuthServerTokensPartialFailure(t *testing.T) {
 	err = revokeAuthServerTokens(t.Context(), flow, server.metadata(), "access-token", "refresh-token")
 	require.Error(t, err)
 	assert.Equal(t, []string{"access_token:access-token"}, revoked)
+}
+
+// TestAuthCodeTransportStoreReadFailureKeepsCredentials verifies that when the
+// stored refresh token cannot be read, an invalid_grant does not clear credentials
+// another process may have rotated.
+func TestAuthCodeTransportStoreReadFailureKeepsCredentials(t *testing.T) {
+	server := newAuthCodeTestServer(t)
+	server.serveRefreshError("invalid_grant")
+
+	tr := newTestAuthCodeTransport(t, server, expiredAuthCodeToken(),
+		func(*code.Token, *code.AuthServerMetadata) error {
+			t.Error("token must not be saved on failed refresh")
+			return nil
+		},
+		func() error { t.Error("credentials must not be cleared when the store cannot be read"); return nil },
+	)
+	tr.loadRefreshToken = func() (string, error) { return "", errors.New("keychain locked") }
+
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, "https://example.mongodb.com", http.NoBody)
+	require.NoError(t, err)
+	_, err = tr.RoundTrip(req)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "keychain locked")
+}
+
+// TestAuthCodeClearCredentials verifies clearing removes the issuer binding along
+// with the tokens, so MONGODB_ATLAS_AUTH_SERVER_URL applies to the next login.
+func TestAuthCodeClearCredentials(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockProfile := NewMockProfileProvider(ctrl)
+	mockProfile.EXPECT().SetAccessToken("")
+	mockProfile.EXPECT().SetRefreshToken("")
+	mockProfile.EXPECT().SetTokenExpiry("")
+	mockProfile.EXPECT().SetAuthServerURL("")
+	mockProfile.EXPECT().SetAuthServerMetadata(nil).Return(nil)
+	mockProfile.EXPECT().Save().Return(nil)
+
+	require.NoError(t, authCodeClearCredentials(mockProfile)())
 }

@@ -404,6 +404,20 @@ func (p *Profile) SetRefreshToken(v string) {
 	p.Set(RefreshTokenField, v)
 }
 
+// FreshRefreshToken reads the stored refresh token from a new store, bypassing this
+// profile's in-memory snapshot. It errors when the new store cannot use the same
+// secure storage, since an empty result would then not mean "no stored token".
+func (p *Profile) FreshRefreshToken() (string, error) {
+	store, err := NewDefaultStore()
+	if err != nil {
+		return "", err
+	}
+	if p.configStore.IsSecure() && !store.IsSecure() {
+		return "", errors.New("secure storage is not available")
+	}
+	return NewProfile(p.Name(), store).RefreshToken(), nil
+}
+
 // TokenExpiry get configured access token expiry (RFC 3339).
 func TokenExpiry() string { return Default().TokenExpiry() }
 func (p *Profile) TokenExpiry() string {

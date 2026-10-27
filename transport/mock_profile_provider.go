@@ -127,18 +127,19 @@ func (mr *MockProfileProviderMockRecorder) ClientSecret() *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ClientSecret", reflect.TypeOf((*MockProfileProvider)(nil).ClientSecret))
 }
 
-// Name mocks base method.
-func (m *MockProfileProvider) Name() string {
+// FreshRefreshToken mocks base method.
+func (m *MockProfileProvider) FreshRefreshToken() (string, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Name")
+	ret := m.ctrl.Call(m, "FreshRefreshToken")
 	ret0, _ := ret[0].(string)
-	return ret0
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
 }
 
-// Name indicates an expected call of Name.
-func (mr *MockProfileProviderMockRecorder) Name() *gomock.Call {
+// FreshRefreshToken indicates an expected call of FreshRefreshToken.
+func (mr *MockProfileProviderMockRecorder) FreshRefreshToken() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Name", reflect.TypeOf((*MockProfileProvider)(nil).Name))
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FreshRefreshToken", reflect.TypeOf((*MockProfileProvider)(nil).FreshRefreshToken))
 }
 
 // OpsManagerURL mocks base method.

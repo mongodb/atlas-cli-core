@@ -22,10 +22,13 @@ import (
 	"sync"
 	"time"
 
-	"github.com/mongodb/atlas-cli-core/config"
 	"go.mongodb.org/atlas-sdk/v20250312027/auth/code"
 	atlasauth "go.mongodb.org/atlas/auth"
 )
+
+// ErrNotLoggedIn is returned once the profile's credentials were cleared after an
+// unrecoverable refresh failure.
+var ErrNotLoggedIn = errors.New("not logged in, run `atlas auth login`")
 
 // NewAuthCodeTransport creates a transport for Authorization Code + PKCE (user_account)
 // profiles. Refresh and persistence are serialized under one mutex; unrecoverable
@@ -60,7 +63,7 @@ func NewAuthCodeTransport(profile ProfileProvider, token *atlasauth.Token, base 
 		},
 		saveMetadata:     profile.SetAuthServerMetadata,
 		clearCredentials: authCodeClearCredentials(profile),
-		loadRefreshToken: func() string { return config.FreshRefreshToken(profile.Name()) },
+		loadRefreshToken: profile.FreshRefreshToken,
 	}, nil
 }
 
@@ -90,70 +93,82 @@ type authCodeTransport struct {
 	saveToken        func(*code.Token, *code.AuthServerMetadata) error
 	saveMetadata     func(*code.AuthServerMetadata) error
 	clearCredentials func() error
-	loadRefreshToken func() string
+	loadRefreshToken func() (string, error)
 }
 
 func (tr *authCodeTransport) RoundTrip(req *http.Request) (*http.Response, error) {
-	if err := tr.ensureToken(req.Context()); err != nil {
+	token, err := tr.ensureToken(req.Context())
+	if err != nil {
 		return nil, err
 	}
-
-	tr.mu.Lock()
-	token := tr.token
-	tr.mu.Unlock()
 	token.SetAuthHeader(req)
 
 	return tr.base.RoundTrip(req)
 }
 
-// ensureToken refreshes the token if invalid. It holds the transport mutex for
-// the whole operation so concurrent requests cannot race the refresh or the
-// persistence of the rotated token.
-func (tr *authCodeTransport) ensureToken(ctx context.Context) error {
+// ensureToken returns a valid token, refreshing it if needed. It holds the
+// transport mutex for the whole operation so concurrent requests cannot race the
+// refresh or the persistence of the rotated token.
+func (tr *authCodeTransport) ensureToken(ctx context.Context) (*code.Token, error) {
 	tr.mu.Lock()
 	defer tr.mu.Unlock()
 
+	if tr.token == nil {
+		return nil, ErrNotLoggedIn
+	}
 	if tr.token.Valid() {
-		return nil
+		return tr.token, nil
 	}
 
 	metadata, err := ensureAuthServerMetadata(ctx, tr.flow, tr.metadata, tr.saveMetadata)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	tr.metadata = metadata
 
-	token, err := tr.refreshToken(ctx, metadata)
+	token, dead, err := tr.refreshToken(ctx, metadata)
 	if err != nil {
 		logAuthServerFailure("refresh", err)
-		if isUnrecoverableRefreshError(err) {
+		if dead {
+			tr.token = nil
 			if clearErr := tr.clearCredentials(); clearErr != nil {
-				return errors.Join(err, clearErr)
+				return nil, errors.Join(err, clearErr)
 			}
 		}
-		return err
+		return nil, err
 	}
 	tr.token = token
 
-	return tr.saveToken(token, metadata)
+	return token, tr.saveToken(token, metadata)
 }
 
 // refreshToken retries once with the stored refresh token when it was rotated
-// by another process. The refresh token is retained when the server does not
-// rotate it.
-func (tr *authCodeTransport) refreshToken(ctx context.Context, metadata *code.AuthServerMetadata) (*code.Token, error) {
+// by another process. dead reports that the stored credentials can never refresh:
+// the stored refresh token was read and was rejected too, or is not newer.
+func (tr *authCodeTransport) refreshToken(ctx context.Context, metadata *code.AuthServerMetadata) (token *code.Token, dead bool, err error) {
 	used := tr.token.RefreshToken
-	token, _, err := tr.flow.RefreshAccessToken(ctx, metadata, used)
+	token, _, err = tr.flow.RefreshAccessToken(ctx, metadata, used)
 	if err != nil && isUnrecoverableRefreshError(err) {
-		if stored := tr.loadRefreshToken(); stored != "" && stored != used {
-			used = stored
-			token, _, err = tr.flow.RefreshAccessToken(ctx, metadata, used)
+		stored, loadErr := tr.loadRefreshToken()
+		if loadErr != nil {
+			return nil, false, errors.Join(err, loadErr)
+		}
+		if stored == "" || stored == used {
+			return nil, true, err
+		}
+		used = stored
+		token, _, err = tr.flow.RefreshAccessToken(ctx, metadata, used)
+		if err != nil {
+			return nil, isUnrecoverableRefreshError(err), err
 		}
 	}
-	if err == nil && token != nil && token.RefreshToken == "" {
+	if err != nil {
+		return nil, false, err
+	}
+	if token.RefreshToken == "" {
 		token.RefreshToken = used
 	}
-	return token, err
+	return token, false, nil
 }
 
 // RevokeUserAccountToken revokes the stored Authorization Code tokens at the
@@ -225,12 +240,16 @@ func ensureAuthServerMetadata(ctx context.Context, flow *code.Config, metadata *
 }
 
 // authCodeClearCredentials returns a callback that clears the stored
-// Authorization Code credentials.
+// Authorization Code credentials and the issuer binding they belong to.
 func authCodeClearCredentials(profile ProfileProvider) func() error {
 	return func() error {
 		profile.SetAccessToken("")
 		profile.SetRefreshToken("")
 		profile.SetTokenExpiry("")
+		profile.SetAuthServerURL("")
+		if err := profile.SetAuthServerMetadata(nil); err != nil {
+			return err
+		}
 		return profile.Save()
 	}
 }

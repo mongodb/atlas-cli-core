@@ -106,6 +106,13 @@ func newTestAuthCodeTransport(t *testing.T, server *authCodeTestServer, token *a
 	}
 }
 
+// parseTestForm parses a test request's form with a bounded body.
+func parseTestForm(t *testing.T, w http.ResponseWriter, r *http.Request) bool {
+	t.Helper()
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<16)
+	return assert.NoError(t, r.ParseForm())
+}
+
 func expiredAuthCodeToken() *atlasauth.Token {
 	return &atlasauth.Token{
 		AccessToken:  "old-access-token",
@@ -345,8 +352,7 @@ func TestRevokeUserAccountToken(t *testing.T) {
 
 		var revoked []string
 		server.response = func(w http.ResponseWriter, r *http.Request) {
-			assert.NoError(t, r.ParseForm())
-			if r.ParseForm() != nil {
+			if !parseTestForm(t, w, r) {
 				return
 			}
 			revoked = append(revoked, r.Form.Get("token_type_hint")+":"+r.Form.Get("token"))
@@ -391,7 +397,7 @@ func TestAuthCodeTransportRefreshAfterRotation(t *testing.T) {
 
 	var usedRefreshTokens []string
 	server.response = func(w http.ResponseWriter, r *http.Request) {
-		if !assert.NoError(t, r.ParseForm()) {
+		if !parseTestForm(t, w, r) {
 			return
 		}
 		usedRefreshTokens = append(usedRefreshTokens, r.Form.Get("refresh_token"))
@@ -432,7 +438,7 @@ func TestRevokeAuthServerTokensPartialFailure(t *testing.T) {
 
 	var revoked []string
 	server.response = func(w http.ResponseWriter, r *http.Request) {
-		if !assert.NoError(t, r.ParseForm()) {
+		if !parseTestForm(t, w, r) {
 			return
 		}
 		if r.Form.Get("token_type_hint") == "refresh_token" {

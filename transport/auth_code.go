@@ -64,7 +64,7 @@ func SaveUserAccountToken(profile ProfileProvider, t *code.Token, metadata *code
 	profile.SetRefreshToken(t.RefreshToken)
 	profile.SetTokenExpiry(t.Expiry.Format(time.RFC3339))
 	if metadata != nil {
-		profile.SetAuthServerURL(metadata.Issuer)
+		profile.SetAuthServerIssuer(metadata.Issuer)
 		profile.SetAuthServerMetadata(metadata)
 	}
 	return profile.Save()
@@ -223,7 +223,7 @@ func authCodeClearCredentials(profile ProfileProvider) func() error {
 		profile.SetAccessToken("")
 		profile.SetRefreshToken("")
 		profile.SetTokenExpiry("")
-		profile.SetAuthServerURL("")
+		profile.SetAuthServerIssuer("")
 		profile.SetAuthServerMetadata(nil)
 		return profile.Save()
 	}

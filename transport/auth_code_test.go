@@ -486,7 +486,7 @@ func TestAuthCodeClearCredentials(t *testing.T) {
 	mockProfile.EXPECT().SetAccessToken("")
 	mockProfile.EXPECT().SetRefreshToken("")
 	mockProfile.EXPECT().SetTokenExpiry("")
-	mockProfile.EXPECT().SetAuthServerURL("")
+	mockProfile.EXPECT().SetAuthServerIssuer("")
 	mockProfile.EXPECT().SetAuthServerMetadata(nil)
 	mockProfile.EXPECT().Save().Return(nil)
 

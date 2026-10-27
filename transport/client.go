@@ -44,8 +44,8 @@ type ProfileProvider interface {
 	ClientSecret() string
 	OpsManagerURL() string
 	Service() string
-	AuthServerURL() string
-	SetAuthServerURL(string)
+	AuthServerIssuer() string
+	SetAuthServerIssuer(string)
 	AuthServerMetadata() *code.AuthServerMetadata
 	SetAuthServerMetadata(*code.AuthServerMetadata)
 }

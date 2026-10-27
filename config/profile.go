@@ -47,7 +47,7 @@ const (
 	AccessTokenField         = "access_token"
 	RefreshTokenField        = "refresh_token"
 	TokenExpiryField         = "token_expiry" //nolint:gosec // config key, not a credential
-	AuthServerURLField       = "auth_server_url"
+	AuthServerIssuerField    = "auth_server_issuer"
 	AuthServerMetadataField  = "auth_server_metadata"
 	ClientIDField            = "client_id"
 	ClientSecretField        = "client_secret"
@@ -163,7 +163,7 @@ func ProfileProperties() []string {
 		AccessTokenField,
 		apiVersion,
 		AuthServerMetadataField,
-		AuthServerURLField,
+		AuthServerIssuerField,
 		baseURL,
 		OpsManagerURLField,
 		orgID,
@@ -430,16 +430,17 @@ func (p *Profile) SetTokenExpiry(v string) {
 	p.Set(TokenExpiryField, v)
 }
 
-// AuthServerURL get the issuer the profile's tokens were issued by.
-func AuthServerURL() string { return Default().AuthServerURL() }
-func (p *Profile) AuthServerURL() string {
-	return p.GetString(AuthServerURLField)
+// AuthServerIssuer get the issuer the profile's tokens were issued by. The key is
+// deliberately not auth_server_url, which MONGODB_ATLAS_AUTH_SERVER_URL would override.
+func AuthServerIssuer() string { return Default().AuthServerIssuer() }
+func (p *Profile) AuthServerIssuer() string {
+	return p.GetString(AuthServerIssuerField)
 }
 
-// SetAuthServerURL store the issuer the profile's tokens were issued by.
-func SetAuthServerURL(v string) { Default().SetAuthServerURL(v) }
-func (p *Profile) SetAuthServerURL(v string) {
-	p.Set(AuthServerURLField, v)
+// SetAuthServerIssuer store the issuer the profile's tokens were issued by.
+func SetAuthServerIssuer(v string) { Default().SetAuthServerIssuer(v) }
+func (p *Profile) SetAuthServerIssuer(v string) {
+	p.Set(AuthServerIssuerField, v)
 }
 
 // ClientID get configured client ID.

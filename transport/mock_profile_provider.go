@@ -57,12 +57,11 @@ func (mr *MockProfileProviderMockRecorder) AccessToken() *gomock.Call {
 }
 
 // AuthServerMetadata mocks base method.
-func (m *MockProfileProvider) AuthServerMetadata() (*code.AuthServerMetadata, error) {
+func (m *MockProfileProvider) AuthServerMetadata() *code.AuthServerMetadata {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "AuthServerMetadata")
 	ret0, _ := ret[0].(*code.AuthServerMetadata)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
+	return ret0
 }
 
 // AuthServerMetadata indicates an expected call of AuthServerMetadata.
@@ -254,11 +253,9 @@ func (mr *MockProfileProviderMockRecorder) SetAccessToken(arg0 any) *gomock.Call
 }
 
 // SetAuthServerMetadata mocks base method.
-func (m *MockProfileProvider) SetAuthServerMetadata(arg0 *code.AuthServerMetadata) error {
+func (m *MockProfileProvider) SetAuthServerMetadata(arg0 *code.AuthServerMetadata) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "SetAuthServerMetadata", arg0)
-	ret0, _ := ret[0].(error)
-	return ret0
+	m.ctrl.Call(m, "SetAuthServerMetadata", arg0)
 }
 
 // SetAuthServerMetadata indicates an expected call of SetAuthServerMetadata.

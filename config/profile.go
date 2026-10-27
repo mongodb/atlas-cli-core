@@ -163,9 +163,9 @@ func ProfileProperties() []string {
 		AccessTokenField,
 		apiVersion,
 		AuthServerMetadataField,
+		AuthServerURLField,
 		baseURL,
 		OpsManagerURLField,
-		AuthServerURLField,
 		orgID,
 		output,
 		privateAPIKey,
@@ -568,37 +568,29 @@ type authServerMetadataCache struct {
 	CacheExpiry time.Time               `json:"cache_expiry"`
 }
 
-// AuthServerMetadata get cached OAuth Authorization Server metadata.
-func AuthServerMetadata() (*code.AuthServerMetadata, error) { return Default().AuthServerMetadata() }
-func (p *Profile) AuthServerMetadata() (*code.AuthServerMetadata, error) {
-	raw := p.GetString(AuthServerMetadataField)
-	if raw == "" {
-		return nil, nil
-	}
+// AuthServerMetadata get cached OAuth Authorization Server metadata. A missing or
+// corrupt cache returns nil.
+func AuthServerMetadata() *code.AuthServerMetadata { return Default().AuthServerMetadata() }
+func (p *Profile) AuthServerMetadata() *code.AuthServerMetadata {
 	var cache authServerMetadataCache
-	if err := json.Unmarshal([]byte(raw), &cache); err != nil {
-		return nil, nil //nolint:nilerr // a corrupt cache is treated as no cache
+	if err := json.Unmarshal([]byte(p.GetString(AuthServerMetadataField)), &cache); err != nil {
+		return nil
 	}
 	metadata := cache.Metadata
 	metadata.CacheExpiry = cache.CacheExpiry
-	return &metadata, nil
+	return &metadata
 }
 
-// SetAuthServerMetadata store cached OAuth Authorization Server metadata.
-func SetAuthServerMetadata(m *code.AuthServerMetadata) error {
-	return Default().SetAuthServerMetadata(m)
-}
-func (p *Profile) SetAuthServerMetadata(m *code.AuthServerMetadata) error {
+// SetAuthServerMetadata store cached OAuth Authorization Server metadata. nil clears it.
+func SetAuthServerMetadata(m *code.AuthServerMetadata) { Default().SetAuthServerMetadata(m) }
+func (p *Profile) SetAuthServerMetadata(m *code.AuthServerMetadata) {
 	if m == nil {
 		p.Set(AuthServerMetadataField, "")
-		return nil
+		return
 	}
-	raw, err := json.Marshal(authServerMetadataCache{Metadata: *m, CacheExpiry: m.CacheExpiry})
-	if err != nil {
-		return fmt.Errorf("marshaling auth server metadata: %w", err)
-	}
+	// Marshaling only strings, bools and a time cannot fail.
+	raw, _ := json.Marshal(authServerMetadataCache{Metadata: *m, CacheExpiry: m.CacheExpiry})
 	p.Set(AuthServerMetadataField, string(raw))
-	return nil
 }
 
 // AccountURL gets the configured account base url.

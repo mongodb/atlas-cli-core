@@ -554,10 +554,9 @@ func TestProfile_AuthServerMetadata(t *testing.T) {
 			RevocationEndpoint:    "https://authorize.mongodb.com/tokens/revoke",
 			CacheExpiry:           time.Now().Add(24 * time.Hour).Truncate(time.Second),
 		}
-		require.NoError(t, p.SetAuthServerMetadata(metadata))
+		p.SetAuthServerMetadata(metadata)
 
-		got, err := p.AuthServerMetadata()
-		require.NoError(t, err)
+		got := p.AuthServerMetadata()
 		require.NotNil(t, got)
 		assert.Equal(t, metadata.Issuer, got.Issuer)
 		assert.Equal(t, metadata.AuthorizationEndpoint, got.AuthorizationEndpoint)
@@ -568,23 +567,19 @@ func TestProfile_AuthServerMetadata(t *testing.T) {
 
 	t.Run("returns nil when no metadata is cached", func(t *testing.T) {
 		p := NewProfile("test", NewInMemoryStore())
-		got, err := p.AuthServerMetadata()
-		require.NoError(t, err)
-		assert.Nil(t, got)
+		assert.Nil(t, p.AuthServerMetadata())
 	})
 
 	t.Run("returns nil on corrupt cached metadata", func(t *testing.T) {
 		p := NewProfile("test", NewInMemoryStore())
 		p.Set(AuthServerMetadataField, "not-json")
-		got, err := p.AuthServerMetadata()
-		require.NoError(t, err)
-		assert.Nil(t, got)
+		assert.Nil(t, p.AuthServerMetadata())
 	})
 
 	t.Run("clears the cache on nil metadata", func(t *testing.T) {
 		p := NewProfile("test", NewInMemoryStore())
-		require.NoError(t, p.SetAuthServerMetadata(&code.AuthServerMetadata{Issuer: "https://authorize.mongodb.com"}))
-		require.NoError(t, p.SetAuthServerMetadata(nil))
+		p.SetAuthServerMetadata(&code.AuthServerMetadata{Issuer: "https://authorize.mongodb.com"})
+		p.SetAuthServerMetadata(nil)
 		assert.Empty(t, p.GetString(AuthServerMetadataField))
 	})
 }

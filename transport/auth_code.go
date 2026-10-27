@@ -42,26 +42,15 @@ func NewAuthCodeTransport(profile ProfileProvider, token *atlasauth.Token, base 
 	if err != nil {
 		return nil, err
 	}
-	metadata, err := profile.AuthServerMetadata()
-	if err != nil {
-		return nil, err
-	}
-
-	codeToken := authCodeToken(token)
-	if codeToken.Expiry.IsZero() {
-		// A missing expiry is treated as expired so the token refreshes.
-		codeToken.Expiry = time.Now().Add(-time.Minute)
-	}
 
 	return &authCodeTransport{
-		token:    codeToken,
+		token:    authCodeToken(token),
 		flow:     flow,
-		metadata: metadata,
+		metadata: profile.AuthServerMetadata(),
 		base:     base,
 		saveToken: func(t *code.Token, md *code.AuthServerMetadata) error {
 			return SaveUserAccountToken(profile, t, md)
 		},
-		saveMetadata:     profile.SetAuthServerMetadata,
 		clearCredentials: authCodeClearCredentials(profile),
 		loadRefreshToken: profile.FreshRefreshToken,
 	}, nil
@@ -76,9 +65,7 @@ func SaveUserAccountToken(profile ProfileProvider, t *code.Token, metadata *code
 	profile.SetTokenExpiry(t.Expiry.Format(time.RFC3339))
 	if metadata != nil {
 		profile.SetAuthServerURL(metadata.Issuer)
-		if err := profile.SetAuthServerMetadata(metadata); err != nil {
-			return err
-		}
+		profile.SetAuthServerMetadata(metadata)
 	}
 	return profile.Save()
 }
@@ -91,7 +78,6 @@ type authCodeTransport struct {
 	base     http.RoundTripper
 
 	saveToken        func(*code.Token, *code.AuthServerMetadata) error
-	saveMetadata     func(*code.AuthServerMetadata) error
 	clearCredentials func() error
 	loadRefreshToken func() (string, error)
 }
@@ -120,7 +106,7 @@ func (tr *authCodeTransport) ensureToken(ctx context.Context) (*code.Token, erro
 		return tr.token, nil
 	}
 
-	metadata, err := ensureAuthServerMetadata(ctx, tr.flow, tr.metadata, tr.saveMetadata)
+	metadata, err := ensureAuthServerMetadata(ctx, tr.flow, tr.metadata)
 	if err != nil {
 		return nil, err
 	}
@@ -184,11 +170,7 @@ func RevokeUserAccountToken(ctx context.Context, profile ProfileProvider, versio
 	if err != nil {
 		return err
 	}
-	metadata, err := profile.AuthServerMetadata()
-	if err != nil {
-		return err
-	}
-	metadata, err = ensureAuthServerMetadata(ctx, flow, metadata, profile.SetAuthServerMetadata)
+	metadata, err := ensureAuthServerMetadata(ctx, flow, profile.AuthServerMetadata())
 	if err != nil {
 		return err
 	}
@@ -215,8 +197,9 @@ func revokeAuthServerTokens(ctx context.Context, flow *code.Config, metadata *co
 
 // ensureAuthServerMetadata returns the cached metadata, discovering fresh metadata
 // when the cache is missing, expired, or issued by a different authorization server.
-// When discovery fails, stale cached metadata for the same issuer is used.
-func ensureAuthServerMetadata(ctx context.Context, flow *code.Config, metadata *code.AuthServerMetadata, save func(*code.AuthServerMetadata) error) (*code.AuthServerMetadata, error) {
+// When discovery fails, stale cached metadata for the same issuer is used. The result
+// is persisted with the next token save.
+func ensureAuthServerMetadata(ctx context.Context, flow *code.Config, metadata *code.AuthServerMetadata) (*code.AuthServerMetadata, error) {
 	if metadata != nil && metadata.Issuer == flow.AuthServerURL.String() &&
 		(metadata.CacheExpiry.IsZero() || metadata.CacheExpiry.After(time.Now())) {
 		return metadata, nil
@@ -230,12 +213,6 @@ func ensureAuthServerMetadata(ctx context.Context, flow *code.Config, metadata *
 		}
 		return nil, err
 	}
-	if save != nil {
-		if saveErr := save(discovered); saveErr != nil {
-			// The cache is best-effort; a persistence failure must not block the flow.
-			logAuthServerFailure("discovery", saveErr)
-		}
-	}
 	return discovered, nil
 }
 
@@ -247,22 +224,19 @@ func authCodeClearCredentials(profile ProfileProvider) func() error {
 		profile.SetRefreshToken("")
 		profile.SetTokenExpiry("")
 		profile.SetAuthServerURL("")
-		if err := profile.SetAuthServerMetadata(nil); err != nil {
-			return err
-		}
+		profile.SetAuthServerMetadata(nil)
 		return profile.Save()
 	}
 }
 
-// isUnrecoverableRefreshError reports whether retrying or reusing the stored
-// credentials can never succeed, so they must be cleared.
+// isUnrecoverableRefreshError reports whether the server rejected the refresh token.
 func isUnrecoverableRefreshError(err error) bool {
 	var oauthErr *code.OAuthError
 	return errors.As(err, &oauthErr) && oauthErr.ErrorCode == "invalid_grant"
 }
 
-// logAuthServerFailure logs OAuth failures by coarse operation category only.
-// Error messages carry OAuth error codes, never token or callback values.
+// logAuthServerFailure logs an OAuth failure with its operation category. Errors
+// carry OAuth error codes and descriptions, never token or callback values.
 func logAuthServerFailure(operation string, err error) {
 	slog.Warn("OAuth operation failed", "operation", operation, slog.Any("error", err))
 }

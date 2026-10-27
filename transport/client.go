@@ -46,8 +46,8 @@ type ProfileProvider interface {
 	Service() string
 	AuthServerURL() string
 	SetAuthServerURL(string)
-	AuthServerMetadata() (*code.AuthServerMetadata, error)
-	SetAuthServerMetadata(*code.AuthServerMetadata) error
+	AuthServerMetadata() *code.AuthServerMetadata
+	SetAuthServerMetadata(*code.AuthServerMetadata)
 }
 
 func HTTPClient(version string, httpTransport http.RoundTripper) (*http.Client, error) {

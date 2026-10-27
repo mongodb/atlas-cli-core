@@ -101,7 +101,6 @@ func newTestAuthCodeTransport(t *testing.T, server *authCodeTestServer, token *a
 		metadata:         metadata,
 		base:             roundTripperStub{},
 		saveToken:        saveToken,
-		saveMetadata:     func(*code.AuthServerMetadata) error { return nil },
 		clearCredentials: clearCredentials,
 		loadRefreshToken: func() (string, error) { return token.RefreshToken, nil },
 	}
@@ -273,7 +272,7 @@ func TestEnsureAuthServerMetadata(t *testing.T) {
 		require.NoError(t, err)
 
 		metadata := &code.AuthServerMetadata{Issuer: server.URL, CacheExpiry: time.Now().Add(time.Hour)}
-		result, err := ensureAuthServerMetadata(t.Context(), flow, metadata, nil)
+		result, err := ensureAuthServerMetadata(t.Context(), flow, metadata)
 		require.NoError(t, err)
 		assert.Same(t, metadata, result)
 		assert.Equal(t, 0, int(discoveryCalls.Load()))
@@ -292,7 +291,7 @@ func TestEnsureAuthServerMetadata(t *testing.T) {
 		}
 
 		metadata := &code.AuthServerMetadata{Issuer: "https://other.example.com", CacheExpiry: time.Now().Add(time.Hour)}
-		result, err := ensureAuthServerMetadata(t.Context(), flow, metadata, nil)
+		result, err := ensureAuthServerMetadata(t.Context(), flow, metadata)
 		require.NoError(t, err)
 		assert.Equal(t, server.URL, result.Issuer)
 		assert.Equal(t, 1, int(discoveryCalls.Load()-before))
@@ -312,12 +311,12 @@ func TestEnsureAuthServerMetadata(t *testing.T) {
 			TokenEndpoint:         server.URL + "/tokens",
 			CacheExpiry:           time.Now().Add(-time.Hour),
 		}
-		result, err := ensureAuthServerMetadata(t.Context(), flow, stale, nil)
+		result, err := ensureAuthServerMetadata(t.Context(), flow, stale)
 		require.NoError(t, err)
 		assert.Same(t, stale, result)
 	})
 
-	t.Run("stale metadata is rediscovered and persisted", func(t *testing.T) {
+	t.Run("stale metadata is rediscovered", func(t *testing.T) {
 		before := discoveryCalls.Load()
 		server.response = func(w http.ResponseWriter, _ *http.Request) {
 			discoveryCalls.Add(1)
@@ -329,15 +328,13 @@ func TestEnsureAuthServerMetadata(t *testing.T) {
 		flow, err := code.NewConfigWithOptions(server.Client(), code.SetAuthServerURL(server.URL))
 		require.NoError(t, err)
 
-		var saved *code.AuthServerMetadata
 		metadata := &code.AuthServerMetadata{Issuer: server.URL, CacheExpiry: time.Now().Add(-time.Hour)}
-		result, err := ensureAuthServerMetadata(t.Context(), flow, metadata, func(m *code.AuthServerMetadata) error { saved = m; return nil })
+		result, err := ensureAuthServerMetadata(t.Context(), flow, metadata)
 		require.NoError(t, err)
 
 		require.NotNil(t, result)
 		assert.Equal(t, server.URL+"/tokens", result.TokenEndpoint)
 		assert.False(t, result.CacheExpiry.IsZero())
-		assert.Same(t, result, saved, "the discovered metadata must be persisted")
 		assert.Equal(t, 1, int(discoveryCalls.Load()-before))
 	})
 }
@@ -490,7 +487,7 @@ func TestAuthCodeClearCredentials(t *testing.T) {
 	mockProfile.EXPECT().SetRefreshToken("")
 	mockProfile.EXPECT().SetTokenExpiry("")
 	mockProfile.EXPECT().SetAuthServerURL("")
-	mockProfile.EXPECT().SetAuthServerMetadata(nil).Return(nil)
+	mockProfile.EXPECT().SetAuthServerMetadata(nil)
 	mockProfile.EXPECT().Save().Return(nil)
 
 	require.NoError(t, authCodeClearCredentials(mockProfile)())

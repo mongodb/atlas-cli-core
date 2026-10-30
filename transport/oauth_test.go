@@ -23,28 +23,79 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/zalando/go-keyring"
+	"go.mongodb.org/atlas-sdk/v20250312027/auth/code"
 )
 
-// TestFlowForAuthServerStoredIssuerWinsOverEnv verifies, through a real store, that
-// MONGODB_ATLAS_AUTH_SERVER_URL does not redirect an existing session to another issuer.
-func TestFlowForAuthServerStoredIssuerWinsOverEnv(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-	t.Setenv("XDG_CONFIG_HOME", home)
-	dir, err := os.UserConfigDir()
-	require.NoError(t, err)
-	require.NoError(t, os.MkdirAll(filepath.Join(dir, config.AtlasCLI), 0o700))
-	require.NoError(t, os.WriteFile(filepath.Join(dir, config.AtlasCLI, "config.toml"),
-		[]byte("version = 3\n[default]\nauth_server_issuer = \"https://stored.example.com\"\n"), 0o600))
-	keyring.MockInit()
-	t.Setenv("MONGODB_ATLAS_AUTH_SERVER_URL", "https://env.example.com")
+// TestFlowForAuthServerIssuer verifies issuer precedence through a real store and
+// real environment variables, including the legacy MCLI_* env prefix.
+func TestFlowForAuthServerIssuer(t *testing.T) {
+	tests := []struct {
+		name     string
+		profile  string
+		env      string
+		mcliEnv  bool
+		expected string
+		wantErr  bool
+	}{
+		{name: "production default", expected: code.DefaultAuthServerURL},
+		{name: "gov default", profile: "service = \"cloudgov\"\n", expected: govAuthServerURL},
+		{name: "config only", profile: "auth_server_url = \"https://config.example.com\"\n", expected: "https://config.example.com"},
+		{name: "env only", env: "https://env.example.com", expected: "https://env.example.com"},
+		{
+			name:     "env overrides config",
+			profile:  "auth_server_url = \"https://config.example.com\"\n",
+			env:      "https://env.example.com",
+			expected: "https://env.example.com",
+		},
+		{
+			name:     "config overrides gov default",
+			profile:  "service = \"cloudgov\"\nauth_server_url = \"https://config.example.com\"\n",
+			expected: "https://config.example.com",
+		},
+		{
+			name:     "stored issuer wins over env and config",
+			profile:  "auth_server_issuer = \"https://stored.example.com\"\nauth_server_url = \"https://config.example.com\"\n",
+			env:      "https://env.example.com",
+			expected: "https://stored.example.com",
+		},
+		{
+			name:     "env overrides config with MCLI variables set",
+			profile:  "auth_server_url = \"https://config.example.com\"\n",
+			env:      "https://env.example.com",
+			mcliEnv:  true,
+			expected: "https://env.example.com",
+		},
+		{name: "non-HTTPS config rejected", profile: "auth_server_url = \"http://config.example.com\"\n", wantErr: true},
+		{name: "non-HTTPS env rejected", env: "http://env.example.com", wantErr: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			home := t.TempDir()
+			t.Setenv("HOME", home)
+			t.Setenv("XDG_CONFIG_HOME", home)
+			dir, err := os.UserConfigDir()
+			require.NoError(t, err)
+			require.NoError(t, os.MkdirAll(filepath.Join(dir, config.AtlasCLI), 0o700))
+			require.NoError(t, os.WriteFile(filepath.Join(dir, config.AtlasCLI, "config.toml"),
+				[]byte("version = 3\n[default]\n"+tt.profile), 0o600))
+			keyring.MockInit()
+			t.Setenv("MONGODB_ATLAS_AUTH_SERVER_URL", tt.env)
+			if tt.mcliEnv {
+				t.Setenv("MCLI_ORG_ID", "legacy_org")
+			}
 
-	store, err := config.NewDefaultStore()
-	require.NoError(t, err)
+			store, err := config.NewDefaultStore()
+			require.NoError(t, err)
 
-	flow, err := FlowForAuthServer(config.NewProfile(config.DefaultProfile, store), nil, testVersion)
-	require.NoError(t, err)
-	assert.Equal(t, "https://stored.example.com", flow.AuthServerURL.String())
+			flow, err := FlowForAuthServer(config.NewProfile(config.DefaultProfile, store), nil, testVersion)
+			if tt.wantErr {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, tt.expected, flow.AuthServerURL.String())
+		})
+	}
 }
 
 func TestFlowForAuthServerClientID(t *testing.T) {

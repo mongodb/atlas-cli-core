@@ -48,6 +48,8 @@ const (
 	RefreshTokenField        = "refresh_token"
 	TokenExpiryField         = "token_expiry" //nolint:gosec // config key, not a credential
 	AuthServerIssuerField    = "auth_server_issuer"
+	AuthServerURLField       = "auth_server_url"
+	AuthServerURLEnv         = "MONGODB_ATLAS_AUTH_SERVER_URL"
 	AuthServerMetadataField  = "auth_server_metadata"
 	ClientIDField            = "client_id"
 	ClientSecretField        = "client_secret"
@@ -164,6 +166,7 @@ func ProfileProperties() []string {
 		apiVersion,
 		AuthServerMetadataField,
 		AuthServerIssuerField,
+		AuthServerURLField,
 		baseURL,
 		OpsManagerURLField,
 		orgID,
@@ -441,6 +444,17 @@ func (p *Profile) AuthServerIssuer() string {
 func SetAuthServerIssuer(v string) { Default().SetAuthServerIssuer(v) }
 func (p *Profile) SetAuthServerIssuer(v string) {
 	p.Set(AuthServerIssuerField, v)
+}
+
+// AuthServerURL get the configured Authorization Server issuer for new logins.
+// MONGODB_ATLAS_AUTH_SERVER_URL overrides the config value. It is read directly
+// because the env store ignores MONGODB_ATLAS_* names when MCLI_* variables are set.
+func AuthServerURL() string { return Default().AuthServerURL() }
+func (p *Profile) AuthServerURL() string {
+	if env := os.Getenv(AuthServerURLEnv); env != "" {
+		return env
+	}
+	return p.GetString(AuthServerURLField)
 }
 
 // ClientID get configured client ID.

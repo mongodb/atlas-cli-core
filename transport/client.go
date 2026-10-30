@@ -46,6 +46,7 @@ type ProfileProvider interface {
 	Service() string
 	AuthServerIssuer() string
 	SetAuthServerIssuer(string)
+	AuthServerURL() string
 	AuthServerMetadata() *code.AuthServerMetadata
 	SetAuthServerMetadata(*code.AuthServerMetadata)
 }

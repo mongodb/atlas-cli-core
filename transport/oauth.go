@@ -30,7 +30,6 @@ const (
 	ClientID    = "0oabtxactgS3gHIR0297" // ClientID for production
 	GovClientID = "0oabtyfelbTBdoucy297" // GovClientID for production
 
-	authServerURLEnvVar = "MONGODB_ATLAS_AUTH_SERVER_URL"
 	// authClientIDEnvVar overrides authCodeClientID. It is not MONGODB_ATLAS_CLIENT_ID,
 	// which is the service-account client ID.
 	authClientIDEnvVar = "MONGODB_ATLAS_AUTH_CLIENT_ID"
@@ -77,13 +76,15 @@ func FlowWithConfig(c ServiceGetter, client *http.Client, version string) (*auth
 type AuthServerGetter interface {
 	Service() string
 	AuthServerIssuer() string
+	AuthServerURL() string
 }
 
 // FlowForAuthServer creates the Authorization Code + PKCE config for the dedicated
 // Authorization Server. The client ID is the registered public client, overridable
 // with MONGODB_ATLAS_AUTH_CLIENT_ID; client_id is the service-account profile field.
 // Issuer precedence: the issuer the profile's tokens were issued by (auth_server_issuer),
-// then MONGODB_ATLAS_AUTH_SERVER_URL, then the gov default, then the SDK's production default.
+// then auth_server_url (MONGODB_ATLAS_AUTH_SERVER_URL overrides the config value),
+// then the gov default, then the SDK's production default.
 func FlowForAuthServer(c AuthServerGetter, client *http.Client, version string) (*code.Config, error) {
 	clientID := authCodeClientID
 	if env := os.Getenv(authClientIDEnvVar); env != "" {
@@ -96,8 +97,8 @@ func FlowForAuthServer(c AuthServerGetter, client *http.Client, version string) 
 	}
 	if issuer := c.AuthServerIssuer(); issuer != "" {
 		authOpts = append(authOpts, code.SetAuthServerURL(issuer))
-	} else if env := os.Getenv(authServerURLEnvVar); env != "" {
-		authOpts = append(authOpts, code.SetAuthServerURL(env))
+	} else if configURL := c.AuthServerURL(); configURL != "" {
+		authOpts = append(authOpts, code.SetAuthServerURL(configURL))
 	} else if c.Service() == config.CloudGovService {
 		authOpts = append(authOpts, code.SetAuthServerURL(govAuthServerURL))
 	}

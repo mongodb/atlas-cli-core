@@ -52,6 +52,24 @@ func TestNewAccessTokenTransport(t *testing.T) {
 	require.Equal(t, expectedHeader, authHeader)
 }
 
+func TestNewAccessTokenTransportWithConfig(t *testing.T) {
+	token := &auth.Token{AccessToken: "mock-access-token", RefreshToken: "mock-refresh-token"}
+	authConfig, err := auth.NewConfigWithOptions(nil, auth.SetClientID("profile-client-id"))
+	require.NoError(t, err)
+
+	roundTripper, err := NewAccessTokenTransportWithConfig(token, Default(), authConfig, func(*auth.Token) error { return nil })
+	require.NoError(t, err)
+	configuredTransport, ok := roundTripper.(*tokenTransport)
+	require.True(t, ok)
+	assert.Same(t, authConfig, configuredTransport.authConfig)
+}
+
+func TestNewAccessTokenTransportWithConfigRejectsNilConfig(t *testing.T) {
+	token := &auth.Token{AccessToken: "mock-access-token", RefreshToken: "mock-refresh-token"}
+	_, err := NewAccessTokenTransportWithConfig(token, Default(), nil, func(*auth.Token) error { return nil })
+	require.EqualError(t, err, "auth config is nil")
+}
+
 func TestNewServiceAccountTransport(t *testing.T) {
 	// Mock the token endpoint since the actual endpoint requires a valid client ID and secret.
 	tokenServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {

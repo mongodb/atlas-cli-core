@@ -121,6 +121,7 @@ func TestHTTPClientFromProfile(t *testing.T) {
 				}
 				m.EXPECT().AuthType().Return(config.UserAccountLegacy)
 				m.EXPECT().Token().Return(token, nil)
+				expectLegacyProfileConfig(m)
 				m.EXPECT().SetAccessToken("new-access-token").Times(0)   // Won't be called in this test
 				m.EXPECT().SetRefreshToken("new-refresh-token").Times(0) // Won't be called in this test
 				m.EXPECT().Save().Times(0)                               // Won't be called in this test
@@ -129,8 +130,9 @@ func TestHTTPClientFromProfile(t *testing.T) {
 				t.Helper()
 				require.NotNil(t, client)
 				// Verify that the client has a token transport
-				_, ok := client.Transport.(*tokenTransport)
+				tokenTransport, ok := client.Transport.(*tokenTransport)
 				require.True(t, ok, "Expected token transport for User Account Legacy auth with token")
+				assert.Equal(t, devClientID, tokenTransport.authConfig.ClientID)
 			},
 		},
 		{
@@ -232,6 +234,12 @@ func TestHTTPClientFromProfile(t *testing.T) {
 	}
 }
 
+func expectLegacyProfileConfig(m *MockProfileProvider) {
+	m.EXPECT().Service().Return(config.CloudService).AnyTimes()
+	m.EXPECT().OpsManagerURL().Return("https://cloud-dev.mongodb.com/").AnyTimes()
+	m.EXPECT().ClientID().Return("").AnyTimes()
+}
+
 // TestHTTPClientFromProfile_UserAccountTokenRefreshCallback verifies token refresh callback functionality.
 func TestHTTPClientFromProfile_UserAccountTokenRefreshCallback(t *testing.T) {
 	ctrl := gomock.NewController(t)
@@ -252,6 +260,7 @@ func TestHTTPClientFromProfile_UserAccountTokenRefreshCallback(t *testing.T) {
 	// Set up expectations
 	mockProfile.EXPECT().AuthType().Return(config.UserAccountLegacy)
 	mockProfile.EXPECT().Token().Return(expiredToken, nil)
+	expectLegacyProfileConfig(mockProfile)
 
 	// The callback should be called when token is refreshed
 	mockProfile.EXPECT().SetAccessToken("new-access-token").Times(1)
@@ -297,6 +306,7 @@ func TestHTTPClientFromProfile_UserAccountTokenRefreshCallbackError(t *testing.T
 	// Set up expectations
 	mockProfile.EXPECT().AuthType().Return(config.UserAccountLegacy)
 	mockProfile.EXPECT().Token().Return(token, nil)
+	expectLegacyProfileConfig(mockProfile)
 
 	// The callback should handle save errors
 	mockProfile.EXPECT().SetAccessToken("new-access-token").Times(1)
@@ -343,6 +353,7 @@ func TestHTTPClientFromProfile_AccessTokenTransportError(t *testing.T) {
 
 	mockProfile.EXPECT().AuthType().Return(config.UserAccountLegacy)
 	mockProfile.EXPECT().Token().Return(token, nil)
+	expectLegacyProfileConfig(mockProfile)
 
 	// We need to temporarily break the config to cause NewAccessTokenTransport to fail
 	// This is a bit tricky to test directly, so we'll focus on the main flow

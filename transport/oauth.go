@@ -17,6 +17,7 @@ package transport
 import (
 	"net/http"
 	"os"
+	"strings"
 
 	"github.com/mongodb/atlas-cli-core/config"
 	"go.mongodb.org/atlas-sdk/v20250312027/auth/code"
@@ -27,8 +28,11 @@ const (
 	cloudGovServiceURL = "https://cloud.mongodbgov.com/"
 
 	// Client IDs
-	ClientID    = "0oabtxactgS3gHIR0297" // ClientID for production
-	GovClientID = "0oabtyfelbTBdoucy297" // GovClientID for production
+	ClientID         = "0oabtxactgS3gHIR0297" // ClientID for production
+	GovClientID      = "0oabtyfelbTBdoucy297" // GovClientID for production
+	devClientID      = "0oadn4hoajpzxeSEy357"
+	internalClientID = "0oayl6fukpaL0ilPP297"
+	govDevClientID   = "0oafm2iv10KRawp5U357"
 
 	authServerURLEnvVar = "MONGODB_ATLAS_AUTH_SERVER_URL"
 	// authClientIDEnvVar overrides authCodeClientID. It is not MONGODB_ATLAS_CLIENT_ID,
@@ -52,8 +56,11 @@ func FlowWithConfig(c ServiceGetter, client *http.Client, version string) (*auth
 	if c.Service() == config.CloudGovService {
 		id = GovClientID
 	}
-	if c.ClientID() != "" {
-		id = c.ClientID()
+	if clientID := legacyClientIDForOpsManagerURL(c.OpsManagerURL()); clientID != "" {
+		id = clientID
+	}
+	if clientID := c.ClientID(); clientID != "" {
+		id = clientID
 	}
 
 	authOpts := []auth.ConfigOpt{
@@ -70,6 +77,23 @@ func FlowWithConfig(c ServiceGetter, client *http.Client, version string) (*auth
 		authOpts = append(authOpts, auth.SetAuthURL(cloudGovServiceURL))
 	}
 	return auth.NewConfigWithOptions(client, authOpts...)
+}
+
+func legacyClientIDForOpsManagerURL(opsManagerURL string) string {
+	switch strings.TrimRight(opsManagerURL, "/") {
+	case "https://localhost:8080", "http://cloud-local.mmscloudteam.com", "https://cloud-dev.mongodb.com", "https://cloud-qa.mongodb.com":
+		return devClientID
+	case "https://cloud-internal.mongodb.com":
+		return internalClientID
+	case "https://cloud-dev.mongodbgov.com":
+		return govDevClientID
+	case "https://cloud-stage.mongodb.com", "https://cloud.mongodb.com":
+		return ClientID
+	case "https://cloud.mongodbgov.com":
+		return GovClientID
+	default:
+		return ""
+	}
 }
 
 // AuthServerGetter provides the profile settings needed for the Authorization

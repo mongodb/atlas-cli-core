@@ -105,10 +105,27 @@ func NewAccessTokenTransport(token *atlasauth.Token, base http.RoundTripper, ver
 		return nil, err
 	}
 
+	return NewAccessTokenTransportWithConfig(token, base, flow, saveToken)
+}
+
+// NewAccessTokenTransportWithConfig creates a token transport using a caller-supplied
+// legacy OAuth config. This lets callers configure refresh with the profile that owns
+// the token instead of relying on config.Default().
+func NewAccessTokenTransportWithConfig(token *atlasauth.Token, base http.RoundTripper, authConfig *atlasauth.Config, saveToken func(*atlasauth.Token) error) (http.RoundTripper, error) {
+	if token == nil {
+		return nil, errors.New("token is nil")
+	}
+	if authConfig == nil {
+		return nil, errors.New("auth config is nil")
+	}
+	if base == nil {
+		base = Default()
+	}
+
 	return &tokenTransport{
 		token:      token,
 		base:       base,
-		authConfig: flow,
+		authConfig: authConfig,
 		saveToken:  saveToken,
 	}, nil
 }

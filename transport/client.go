@@ -82,7 +82,11 @@ func HTTPClientFromProfile(profile ProfileProvider, version string, httpTranspor
 			return &http.Client{Transport: httpTransport}, nil
 		}
 
-		tr, err := NewAccessTokenTransport(token, httpTransport, version, func(t *auth.Token) error {
+		flow, err := FlowWithConfig(profileServiceGetter{ProfileProvider: profile}, &http.Client{Transport: Default()}, version)
+		if err != nil {
+			return nil, err
+		}
+		tr, err := NewAccessTokenTransportWithConfig(token, httpTransport, flow, func(t *auth.Token) error {
 			profile.SetAccessToken(t.AccessToken)
 			profile.SetRefreshToken(t.RefreshToken)
 			return profile.Save()
@@ -106,4 +110,15 @@ func HTTPClientFromProfile(profile ProfileProvider, version string, httpTranspor
 	default:
 		return &http.Client{Transport: httpTransport}, nil
 	}
+}
+
+type profileServiceGetter struct {
+	ProfileProvider
+}
+
+func (p profileServiceGetter) AccountURL() string {
+	if profile, ok := p.ProfileProvider.(interface{ AccountURL() string }); ok {
+		return profile.AccountURL()
+	}
+	return ""
 }

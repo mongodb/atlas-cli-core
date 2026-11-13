@@ -4,7 +4,7 @@ go 1.26.0
 
 require (
 	github.com/golang-jwt/jwt/v5 v5.3.1
-	github.com/mongodb-forks/digest v1.1.0
+	github.com/mongodb-forks/digest v1.2.0
 	github.com/pelletier/go-toml v1.9.5
 	github.com/spf13/afero v1.15.0
 	github.com/spf13/viper v1.21.0

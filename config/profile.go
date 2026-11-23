@@ -25,7 +25,7 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
-	"go.mongodb.org/atlas-sdk/v20250312027/auth/code"
+	"go.mongodb.org/atlas-sdk/v20250312028/auth/code"
 	"go.mongodb.org/atlas/auth"
 )
 

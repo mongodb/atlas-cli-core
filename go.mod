@@ -11,9 +11,9 @@ require (
 	github.com/stretchr/testify v1.12.1
 	github.com/zalando/go-keyring v0.2.6
 	go.mongodb.org/atlas v0.38.0
-	go.mongodb.org/atlas-sdk/v20250312006 v20250312006.0.0
+	go.mongodb.org/atlas-sdk/v20250312006 v20250312006.1.0
 	go.mongodb.org/atlas-sdk/v20250312024 v20250312024.0.0
-	go.mongodb.org/atlas-sdk/v20250312027 v20250312027.1.0
+	go.mongodb.org/atlas-sdk/v20250312028 v20250312028.1.0
 	go.uber.org/mock v0.6.0
 	golang.org/x/oauth2 v0.38.0
 )
@@ -31,7 +31,7 @@ require (
 	github.com/spf13/cast v1.10.0 // indirect
 	github.com/spf13/pflag v1.0.10 // indirect
 	github.com/subosito/gotenv v1.6.0 // indirect
-	go.yaml.in/yaml/v3 v3.0.5 // indirect
+	go.yaml.in/yaml/v3 v3.0.6 // indirect
 	golang.org/x/mod v0.27.0 // indirect
 	golang.org/x/sync v0.16.0 // indirect
 	golang.org/x/sys v0.35.0 // indirect

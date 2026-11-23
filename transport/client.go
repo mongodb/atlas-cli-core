@@ -19,7 +19,7 @@ import (
 	"net/http"
 
 	"github.com/mongodb/atlas-cli-core/config"
-	"go.mongodb.org/atlas-sdk/v20250312027/auth/code"
+	"go.mongodb.org/atlas-sdk/v20250312028/auth/code"
 	"go.mongodb.org/atlas/auth"
 	"golang.org/x/oauth2"
 )
